@@ -3,7 +3,8 @@ import requests
 from typing import List, Tuple
 from bs4 import BeautifulSoup
 
-MIN_PRICE_DIFF = 1.0
+#Parameters
+MIN_PRICE_DIFF = 0.0
 MAX_CONNECTION_TESTS = 10
 
 

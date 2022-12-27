@@ -6,10 +6,12 @@ import schedule
 from typing import List
 import threading
 
+#Parameters
 JSON_PATH = "resources/products.json"
 UPDATES_PATH = "resources/updates.json"
 BOT_PATH = "/home/jaf/Repos/amazon-scraper-bot/src/telegram_bot/bot.py"
-SCHEDULED_TIME = "13:50"
+SCHEDULED_TIME = "09:50"
+UPDATE_FLAG = False
 
 
 def computeTotal(products:List[Product]) -> float:
@@ -20,10 +22,12 @@ def computeTotal(products:List[Product]) -> float:
 
 
 def scheduledUpdate(products:List[Product],modifiedList:List[Product],diff:List[float]) -> None:
+    global UPDATE_FLAG
     modifiedIndexes = updatePrices(products)
     modifiedList.extend([products[i] for i in modifiedIndexes])
     for prod in [products[i] for i in modifiedIndexes]:
         diff[0] += (prod.oldPrice - prod.price)
+    UPDATE_FLAG = True
     return
 
 def launchBot() -> None:
@@ -48,23 +52,28 @@ bot_thread.start()
 
 schedule.every().day.at(SCHEDULED_TIME).do(scheduledUpdate,PRODUCTS,MODIFIED,DIFFERENCE)
 while True:
-    MODIFIED = []
-    DIFFERENCE[0] = 0.0
+    
     schedule.run_pending()
-    sleep(30)
+    
+    if (UPDATE_FLAG):
+        d = dict()
+        d["updates"] = []
+        d["difference"] = DIFFERENCE[0]
+        for prod in MODIFIED:
+            p_d = {
+                "url":prod.url,
+                "name":prod.name,
+                "price":prod.price
+            }
+            d["updates"].append(p_d)
 
-    d = dict()
-    d["updates"] = []
-    d["difference"] = DIFFERENCE[0]
-    for prod in MODIFIED:
-        p_d = {
-            "url":prod.url,
-            "name":prod.name,
-            "price":prod.price
-        }
-        d["updates"].append(p_d)
-
-    with open(UPDATES_PATH,"w",encoding='utf-8') as updates_json:
-        dump(d,updates_json,indent=4)
+        with open(UPDATES_PATH,"w",encoding='utf-8') as updates_json:
+            dump(d,updates_json,indent=4)
+        
+        UPDATE_FLAG = False
+        MODIFIED = []
+        DIFFERENCE[0] = 0.0
+    
+    sleep(60)
 
 

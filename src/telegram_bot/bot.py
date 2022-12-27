@@ -7,9 +7,9 @@ import schedule
 from time import sleep
 load_dotenv()
 
-
+#Parameters
 JSON_PATH = "/home/jaf/Repos/amazon-scraper-bot/src/resources/updates.json"
-SCHEDULED_TIME = "14:00"
+SCHEDULED_TIME = "09:52"
 bot = TeleBot(__name__)
 USER_ID = getenv("MY_ID")
 
@@ -61,9 +61,9 @@ def getUpdatesMessage() -> str:
 def scheduledMessage() -> None:
     updatesText = getUpdatesMessage()
     if (len(updatesText) == 0): return
-    text = "Some products have price updates!\n"+updatesText
+    text = "Some products have price updates!\n\n"+updatesText
     bot.send_message(chat_id=USER_ID,text=text)
-    log("Update message sent!",logger)
+    #?log(sent,logger)
 
 
 
@@ -79,6 +79,6 @@ if __name__ == "__main__":
     schedule.every().day.at(SCHEDULED_TIME).do(scheduledMessage)
     while True:
         schedule.run_pending()
-        sleep(30)
+        sleep(60)
 
     
