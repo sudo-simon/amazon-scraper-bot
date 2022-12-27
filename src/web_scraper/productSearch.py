@@ -1,4 +1,4 @@
-from json import load,dump
+from json import load
 import requests
 from typing import List, Tuple
 from bs4 import BeautifulSoup
@@ -20,7 +20,7 @@ class Product:
         name = None
         price = None
         
-        for test in range(MAX_CONNECTION_TESTS):
+        for _ in range(MAX_CONNECTION_TESTS):
             if (price is not None): break
 
             r = requests.get(self.url) if url is None else requests.get(url)
@@ -71,6 +71,20 @@ def getProducts(json:str) -> List[Product]:
             new_prod = Product(url, name if name != "None" else None)
             productList.append(new_prod)
     return productList
+
+def loadJson(json:str) -> Tuple[List[Product],float]:
+    productList = []
+    targetTotal = None
+    with open(json,"r",encoding='utf-8') as json_file:
+        jsonObj = load(json_file)
+        objectsList = jsonObj.get("products")
+        if (jsonObj.get("targetTotal") is not None): targetTotal = float(jsonObj.get("targetTotal"))
+        for i in range(len(objectsList)):
+            name = objectsList[i][0]
+            url = objectsList[i][1]
+            new_prod = Product(url, name if name != "None" else None)
+            productList.append(new_prod)
+    return (productList,targetTotal)
 
 
 def updatePrices(productList:List[Product]) -> List[int]:
