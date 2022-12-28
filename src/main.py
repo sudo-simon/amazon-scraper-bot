@@ -14,13 +14,6 @@ SCHEDULED_TIME = "09:50"
 UPDATE_FLAG = False
 
 
-def computeTotal(products:List[Product]) -> float:
-    tot = 0.0
-    for prod in products:
-        tot += prod.price
-    return tot
-
-
 def scheduledUpdate(products:List[Product],modifiedList:List[Product],diff:List[float]) -> None:
     global UPDATE_FLAG
     modifiedIndexes = updatePrices(products)
@@ -75,5 +68,10 @@ while True:
         DIFFERENCE[0] = 0.0
     
     sleep(60)
+
+
+
+if __name__ == "__main__":
+    
 
 

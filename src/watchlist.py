@@ -1,5 +1,5 @@
 from json import load,dump
-from typing import List,Tuple,Union
+from typing import Union
 import requests
 from bs4 import BeautifulSoup
 
@@ -69,40 +69,103 @@ class Watchlist:
             return self.lastPrice - self.price
 
 
+
     ##!## ------------------------------------------------------------------------------------ ##!##
 
 
+
+    id = None
     products = None
     targetPrice = None
+    currentTotal = None
 
-    def __init__(self,targetPrice:float=None) -> None:
+    def __init__(self, id:str, targetPrice:float=None) -> None:
+        if (not (len(id) > 0)): return
+        self.id = id
         self.products = []
         if (targetPrice is not None): self.targetPrice = targetPrice
+        self.currentTotal = 0.0
 
     def __str__(self) -> str:
-        return f""
+        return (f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n" for prod in self.products)
     def __repr__(self) -> str:
-        return f""
+        return (f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n" for prod in self.products)
 
     
     def editTargetPrice(self, targetPrice:Union[float,None]) -> None:
         self.targetPrice = targetPrice
 
-    def addProduct(self, product:Product) -> int:
-        if (product in self.products): return -1
-        self.products.append(product)
+
+    def addProduct(self, url:str, name:str=None) -> int:
+        if (self.findProduct(name) is not None): return -1
+        new_prod = self.Product(url,name)
+        self.currentTotal += new_prod.price
+        self.products.append(new_prod)
         self.products.sort()
         return 0
     
-    def removeProduct(self,name:str) -> Product:
-        for i in range(len(self.products)):
-            prod = self.products[i]
-            if (prod.name if prod.name is not None else prod.fullName) == name:
-                ret = self.products.pop(i)
-                self.products.sort()
-                return ret
+    def removeProduct(self, name:str) -> Product:
+        index = self.findProduct(name)
+        if (index is not None):
+            ret = self.products.pop(index)
+            self.currentTotal -= ret.price
+            self.products.sort()
+            return ret
+        return None
+    
+
+    def findProduct(self, name:str) -> Union[int,None]:
+        
+        top = len(self.products)-1
+        bot = 0
+        
+        while (top > bot):
+            mid = (top+bot)//2
+            elem = self.products[mid]
+            elem_name = elem.name if elem.name is not None else elem.fullName
+            if (name == elem_name): return mid
+            if (name < elem_name):
+                top = mid
+                continue
+            if (name > elem_name):
+                bot = mid
+                continue
         
         return None
+
+
+    def updatePrices(self) -> float:
+        diff = 0.0
+        for i in range(len(self.products)):
+            diff += self.products[i].updatePrice()
+        self.currentTotal -= diff
+        return diff
+
+
+    def loadFromJson(self, json_path:str) -> int:
+        with open(json_path, "r", encoding='utf-8') as in_json:
+            jsonObj = load(in_json)
+            for prod_entry in jsonObj.get('products'):
+                self.addProduct(prod_entry[1],prod_entry[0])
+            if (jsonObj.get('targetPrice')):
+                self.targetPrice = jsonObj.get('targetPrice')
+        return len(self.products)
+
+    def saveToJson(self, json_path:str=None) -> int:
+        out_d = dict()
+        out_d['products'] = []
+        out_d['targetPrice'] = 0.0
+        for prod in self.products:
+            out_d["products"].append([(prod.name if prod.name is not None else prod.fullName),prod.url])
+        if (self.targetPrice is not None):
+            out_d["targetPrice"] = self.targetPrice
+
+        out_path = json_path if json_path is not None else "resources/"+self.id+"_watchlist.json"
+        with open(out_path, "w", encoding='utf-8') as out_json:
+            dump(out_d,out_json,indent=4)
+        return len(out_d["products"])
+
+
 
 
 
