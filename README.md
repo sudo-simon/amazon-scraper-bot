@@ -7,7 +7,8 @@ Python web scraper for Amazon offers with Telegram bot integration
 - requests
 - beautifulsoup4
 - schedule
-- telebot
+- pyTelegramBotAPI
+- dotenv
 
 
 ## How to run

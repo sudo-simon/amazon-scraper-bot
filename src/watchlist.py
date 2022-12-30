@@ -1,5 +1,5 @@
 from json import load,dump
-from typing import Union
+from typing import Union, List
 import requests
 from bs4 import BeautifulSoup
 
@@ -75,21 +75,33 @@ class Watchlist:
 
 
     id = None
-    products = None
+    products:List[Product] = None
     targetPrice = None
-    currentTotal = None
+    lastTotal = None
+    total = None
 
-    def __init__(self, id:str, targetPrice:float=None) -> None:
-        if (not (len(id) > 0)): return
-        self.id = id
-        self.products = []
-        if (targetPrice is not None): self.targetPrice = targetPrice
-        self.currentTotal = 0.0
+    def __init__(self, id:str, targetPrice:float=None, json_path:str=None) -> None:
+        if (not (len(id) > 0)):
+            try:
+                self.loadFromJson(json_path)
+            except: return
+        else:
+            self.id = id
+            self.products = []
+            if (targetPrice is not None): self.targetPrice = targetPrice
+            self.total = 0.0
 
     def __str__(self) -> str:
-        return (f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n" for prod in self.products)
+        ret = ""
+        for prod in self.products:
+            ret += f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n"
+        ret += f"\nTotal: {self.total} €\n"
+        return ret
     def __repr__(self) -> str:
-        return (f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n" for prod in self.products)
+        ret = ""
+        for prod in self.products:
+            ret += f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n"
+        return ret
 
     
     def editTargetPrice(self, targetPrice:Union[float,None]) -> None:
@@ -99,7 +111,7 @@ class Watchlist:
     def addProduct(self, url:str, name:str=None) -> int:
         if (self.findProduct(name) is not None): return -1
         new_prod = self.Product(url,name)
-        self.currentTotal += new_prod.price
+        self.total += new_prod.price
         self.products.append(new_prod)
         self.products.sort()
         return 0
@@ -108,7 +120,7 @@ class Watchlist:
         index = self.findProduct(name)
         if (index is not None):
             ret = self.products.pop(index)
-            self.currentTotal -= ret.price
+            self.total -= ret.price
             self.products.sort()
             return ret
         return None
@@ -123,7 +135,8 @@ class Watchlist:
             mid = (top+bot)//2
             elem = self.products[mid]
             elem_name = elem.name if elem.name is not None else elem.fullName
-            if (name == elem_name): return mid
+            if (name == elem_name):
+                return mid
             if (name < elem_name):
                 top = mid
                 continue
@@ -138,21 +151,28 @@ class Watchlist:
         diff = 0.0
         for i in range(len(self.products)):
             diff += self.products[i].updatePrice()
-        self.currentTotal -= diff
+        self.lastTotal = self.total
+        self.total -= diff
+        self.writeUpdatesToJson()
         return diff
 
 
     def loadFromJson(self, json_path:str) -> int:
         with open(json_path, "r", encoding='utf-8') as in_json:
             jsonObj = load(in_json)
+            self.id = jsonObj.get('id')
+            prods = []
             for prod_entry in jsonObj.get('products'):
-                self.addProduct(prod_entry[1],prod_entry[0])
+                prod = self.Product(prod_entry[1],prod_entry[0])
+                prods.append(prod)
+            self.products = prods
             if (jsonObj.get('targetPrice')):
                 self.targetPrice = jsonObj.get('targetPrice')
         return len(self.products)
 
     def saveToJson(self, json_path:str=None) -> int:
         out_d = dict()
+        out_d['id'] = self.id
         out_d['products'] = []
         out_d['targetPrice'] = 0.0
         for prod in self.products:
@@ -160,12 +180,29 @@ class Watchlist:
         if (self.targetPrice is not None):
             out_d["targetPrice"] = self.targetPrice
 
-        out_path = json_path if json_path is not None else "resources/"+self.id+"_watchlist.json"
+        out_path = json_path if json_path is not None else ("./resources/"+self.id+"_watchlist.json")
         with open(out_path, "w", encoding='utf-8') as out_json:
             dump(out_d,out_json,indent=4)
         return len(out_d["products"])
 
-
+    def writeUpdatesToJson(self, json_path:str=None) -> int:
+        out_d = dict()
+        out_d['id'] = self.id
+        out_d['products'] = []
+        out_d['difference'] = 0.0
+        for prod in self.products:
+            prod_d = dict()
+            prod_d['name'] = prod.name if prod.name is not None else prod.fullName
+            prod_d['price'] = prod.price
+            prod_d['url'] = prod.url
+            out_d["products"].append(prod_d)
+        if (self.lastTotal is not None):
+            out_d["difference"] = self.lastTotal - self.total
+        
+        out_path = json_path if json_path is not None else ("./resources/"+self.id+"_update.json")
+        with open(out_path,"w",encoding='utf-8') as out_json:
+            dump(out_d,out_json,indent=4)
+        return len(out_d["products"])
 
 
 
