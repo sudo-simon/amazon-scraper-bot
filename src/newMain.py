@@ -1,5 +1,6 @@
-from watchlist import Watchlist
+from database import Database
 from typing import Dict
+from json import load
 import logging
 from dotenv import load_dotenv
 from os import getenv,listdir
@@ -15,12 +16,14 @@ from queue import Queue
 ##?## ------------------------------ VARIABLES ------------------------------ ##?##
 
 load_dotenv()
-RESOURCES_PATH = "./resources/"
+DATABASE_PATH = "./resources/database.json"
+UPDATES_PATH = "./resources/updates.txt"
 #SCHEDULED_TIME_MAIN = "13:50"
 SCHEDULED_TIME_THREAD = "14:00"
 UPDATING = False
-bot = TeleBot(__name__)
 USER_ID = getenv("MY_ID")
+bot = TeleBot(__name__)
+db = Database()
 
 
 ##?## ------------------------------ LOGGING ------------------------------ ##?##
@@ -47,54 +50,25 @@ logger = logger_init()
 
 ##?## ------------------------------ FUNCTIONS ------------------------------ ##?##
 
-def loadWatchlists(resources_path:str=RESOURCES_PATH) -> Dict[str,Watchlist]:
-    allWatchlists = dict()
-    watchlists_paths = [path for path in listdir(resources_path) if (isfile(join(resources_path,path)) and path.endswith("_watchlist.json"))]
-    for path in watchlists_paths:
-        new_watchlist = Watchlist("",json_path=path)
-        allWatchlists[new_watchlist.id] = new_watchlist
-    return allWatchlists
-
-
-def updateThreadQueue(allWatchlists:Dict[str,Watchlist],threadQueue:Queue) -> None:
-    try:
-        threadQueue.get(block=False)
-    except:
-        pass
-    threadQueue.put(allWatchlists,block=True,timeout=None)
-
-
-def addWatchlistServer(allWatchlists:Dict[str,Watchlist],threadQueue:Queue,id:str,targetPrice:float=None) -> int:
-    if (id in allWatchlists.keys()): return -1
-    new_watchlist = Watchlist(id,targetPrice)
-    allWatchlists[id] = new_watchlist
-    updateThreadQueue(allWatchlists,threadQueue)
-    return 0
-
-
-def removeWatchlistServer(allWatchlists:Dict[str,Watchlist],id:str) -> int:
-    if (id not in allWatchlists.keys()): return -1
-    allWatchlists.pop(id)
-    return 0
-
+def cleanTxtFile(path:str) -> None:
+    with open(path,"w",encoding='utf-8') as txt:
+        txt.write("")
 
 def dailyUpdate(user_id:str, threadQueue:Queue) -> None:
-    allWatchlists:Dict[str,Watchlist] = {}
-    try:
-        allWatchlists = threadQueue.get()
-    except:
-        return
+    db.read(DATABASE_PATH)
+    cleanTxtFile(UPDATES_PATH)
+    for id,wl in db.database.items():
+        wl.updatePrices()
     msg = "Some of your watchlists have been updated!\n"
-    for id in allWatchlists.keys():
-        diff = allWatchlists[id].updatePrices()
-        if ((diff >= 5.0) or (allWatchlists[id].total <= allWatchlists[id].targetPrice)):
-            msg += (id+":\n") + str(allWatchlists[id])
+    updated_ids = []
+    with open(UPDATES_PATH,"r",encoding='utf-8') as updates_txt:
+        updated_ids = updates_txt.readlines()
+    for id in updated_ids:
+        id = id.strip()
+        msg += (id+":\n") + str(db.database[id])
     if (msg == "Some of your watchlists have been updated!\n"): return
     sent = bot.send_message(chat_id=user_id,text=msg)
     log(sent,logger)
-    threadQueue.put(allWatchlists)
-
-    #TODO: remake with json _update.json files being the readable database (listdir function)
 
 
 #! DO NOT USE, MAIN THREAD HAS TO POLL BOT REQUESTS
@@ -170,27 +144,13 @@ if (__name__ == "__main__"):
     print("Jaf's AWS (Amazon Web Scraper) Telegram bot started\n")
     logger.info("Jaf's AWS (Amazon Web Scraper) server started")
 
-    allWatchlists = loadWatchlists()
+    if (isfile(DATABASE_PATH)): db.read(DATABASE_PATH)
 
-    threadQueue = Queue(maxsize=1)
-    dailyUpdateThread = Thread(target=updateRoutine,args=())
     schedule.every().day.at(SCHEDULED_TIME_THREAD).do(dailyUpdate,USER_ID,threadQueue)
+    dailyUpdateThread = Thread(target=updateRoutine,args=())
 
-    try:
-        if (len(argv) > 1):
-            json_file = str(argv[1])
-            list_id = json_file.split('/')[1].split('_')[0]
-            init_watchlist = Watchlist(list_id)
-            init_watchlist.loadFromJson(json_file)
-            allWatchlists[init_watchlist.id] = init_watchlist
-    except:
-        print("Make sure your initial json file to load has a name similar to <list_id>_watchlist.json and is placed in resources/")
-        exit(1)
-    
-    threadQueue.put(allWatchlists)
-
-    bot.infinity_polling()
     dailyUpdateThread.start()
+    bot.infinity_polling()
 
 
 
