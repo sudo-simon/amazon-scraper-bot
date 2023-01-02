@@ -61,6 +61,10 @@ def firstRun() -> bool:
         with open(UPDATES_PATH,"x",encoding='utf-8') as new_txt:
             new_txt.write("")
         flag = True
+    if (not isfile(".env")):
+        with open(".env","x",encoding='utf-8') as new_env:
+            new_env.write(f"TOKEN = \"\"\nMY_ID = \"\"")
+        flag = True
     return flag
 
 def cleanTxtFile(path:str) -> None:
