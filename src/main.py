@@ -1,13 +1,11 @@
 from database import Database
-from typing import Dict
-from json import load
 import logging
 from dotenv import load_dotenv
 from os import getenv,makedirs
 from os.path import isfile,isdir,dirname
 import schedule
 from time import sleep
-from telebot import TeleBot,types
+import telebot
 from threading import Thread
 
 
@@ -19,9 +17,12 @@ DATABASE_PATH = "./resources/database.json"
 UPDATES_PATH = "./resources/updates.txt"
 SCHEDULED_TIME_THREAD = "14:00"
 #UPDATING = False
-USER_ID = getenv("MY_ID")
-bot = TeleBot(__name__)
+USER_ID = ""
+bot:telebot.TeleBot
 db = Database()
+if (isfile(".env")):
+    USER_ID = getenv("MY_ID")
+    bot = telebot.TeleBot(getenv("TOKEN"))
 
 
 ##?## ------------------------------ LOGGING ------------------------------ ##?##
@@ -33,12 +34,12 @@ def logger_init() -> logging.Logger:
     logger.setLevel(logging.INFO)
     return logger
 
-def log(message:types.Message,logger:logging.Logger) -> None:
+def log(message:telebot.types.Message,logger:logging.Logger) -> None:
     log_msg = (
-        "{" + str(message['from']['first_name']) +
-        ((" "+str(message['from']['last_name'])) if 'last_name' in message['from'].keys() else "") +
-        ", id="+str(message['from']['id'])+"} > "+
-        str(message['text'])
+        "{" + str(message.from_user.first_name) +
+        ((" "+str(message.from_user.last_name)) if message.from_user.last_name is not None else "") +
+        ", id="+str(message.from_user.id)+"} > "+
+        str(message.text)
     )
     print("~> "+log_msg)
     logger.info(log_msg)
@@ -112,7 +113,7 @@ def rescheduleUpdate(scheduled_time:str,user_id:str) -> None:
 def checkUser(chat_id:str) -> bool:
     return chat_id == USER_ID
 
-def command_switch(message:types.Message) -> bool:
+def command_switch(message:telebot.types.Message) -> bool:
     switcher = {
         "/start":start,
         "/addWatchlist":addWatchlist,
@@ -128,25 +129,25 @@ def command_switch(message:types.Message) -> bool:
 
 
 @bot.message_handler(commands=['start'])
-def start(message:types.Message) -> None:
-    if (str(message['from']['id']) != USER_ID):
-        bot.send_message(chat_id=USER_ID,text=f"User {message['from']['id']} ({message['from']['first_name']}) tried to connect to this bot")
+def start(message:telebot.types.Message) -> None:
+    if (str(message.from_user.id) != USER_ID):
+        bot.send_message(chat_id=USER_ID,text=f"User {message.from_user.id} ({message.from_user.first_name}) tried to connect to this bot")
         log(message,logger)
         #print(f"User_id = {str(message['from']['id'])}\nChat_id = {str(message['chat']['id'])}")
         return
     else:
-        bot.send_message(chat_id=USER_ID,text=f"Hi {message['from']['first_name']}")
+        bot.send_message(chat_id=USER_ID,text=f"Hi {message.from_user.first_name}")
 
 
 
 @bot.message_handler(commands=['addWatchlist'])
-def addWatchlist(message:types.Message) -> None:
-    if not checkUser(str(message['from']['id'])): return
+def addWatchlist(message:telebot.types.Message) -> None:
+    if not checkUser(str(message.from_user.id)): return
     log(message,logger)
     new_msg = bot.send_message(chat_id=USER_ID,text="Name of the watchlist to be created? (64 characters max, unique)")
     bot.register_next_step_handler(message=new_msg,callback=addWatchlist_step_1)
 
-def addWatchlist_step_1(message:types.Message) -> None:
+def addWatchlist_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     wl_id = message.text
     if (len(wl_id) > 64):
@@ -159,7 +160,7 @@ def addWatchlist_step_1(message:types.Message) -> None:
     new_msg = bot.send_message(chat_id=USER_ID,text="Do you want to set a target price for this watchlist? (Number if affirmative, \"No\") otherwise")
     bot.register_next_step_handler(message=new_msg,callback=addWatchlist_step_2,args=(wl_id))
 
-def addWatchlist_step_2(message:types.Message,id:str) -> None:
+def addWatchlist_step_2(message:telebot.types.Message,id:str) -> None:
     if command_switch(message): return
     targetPrice = str(message.text)
     if (targetPrice in ["No","no"]):
@@ -176,18 +177,18 @@ def addWatchlist_step_2(message:types.Message,id:str) -> None:
 
 
 @bot.message_handler(commands=['removeWatchlist'])
-def removeWatchlist(message:types.Message) -> None:
-    if not checkUser(str(message['from']['id'])): return
+def removeWatchlist(message:telebot.types.Message) -> None:
+    if not checkUser(str(message.from_user.id)): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
         bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
         return
-    keyboard = types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
+    keyboard = telebot.types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
     for id in db.database.keys(): keyboard.add(id)
     new_msg = bot.send_message(chat_id=USER_ID,text="Which watchlist do you want to remove?",reply_markup=keyboard)
     bot.register_next_step_handler(message=new_msg,callback=removeWatchlist_step_1)
 
-def removeWatchlist_step_1(message:types.Message) -> None:
+def removeWatchlist_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     del_id = message.text
     db.removeWatchlist(del_id)
@@ -198,24 +199,24 @@ def removeWatchlist_step_1(message:types.Message) -> None:
 
 
 @bot.message_handler(commands=['addProduct'])
-def addProduct(message:types.Message) -> None:
-    if not checkUser(str(message['from']['id'])): return
+def addProduct(message:telebot.types.Message) -> None:
+    if not checkUser(str(message.from_user.id)): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
         bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
         return
-    keyboard = types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
+    keyboard = telebot.types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
     for id in db.database.keys(): keyboard.add(id)
     new_msg = bot.send_message(chat_id=USER_ID,text="Add product to which watchlist?",reply_markup=keyboard)
     bot.register_next_step_handler(message=new_msg,callback=addProduct_step_1)
 
-def addProduct_step_1(message:types.Message) -> None:
+def addProduct_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     add_id = message.text
     new_msg = bot.send_message(chat_id=USER_ID,text="Product URL:")
     bot.register_next_step_handler(message=new_msg,callback=addProduct_step_2,args=(add_id))
 
-def addProduct_step_2(message:types.Message,id:str) -> None:
+def addProduct_step_2(message:telebot.types.Message,id:str) -> None:
     if command_switch(message): return
     url = str(message.text)
     if (not url.startswith("https://")):
@@ -224,7 +225,7 @@ def addProduct_step_2(message:types.Message,id:str) -> None:
     new_msg = bot.send_message(chat_id=USER_ID,text="Product name (optional, 64 characters max):")
     bot.register_next_step_handler(message=new_msg,callback=addProduct_step_3,args=(id,url))
 
-def addProduct_step_3(message:types.Message,id:str,url:str) -> None:
+def addProduct_step_3(message:telebot.types.Message,id:str,url:str) -> None:
     if command_switch(message): return
     name = message.text
     if (len(name) > 64):
@@ -239,27 +240,27 @@ def addProduct_step_3(message:types.Message,id:str,url:str) -> None:
 
 
 @bot.message_handler(commands=['removeProduct'])
-def removeProduct(message:types.Message) -> None:
-    if not checkUser(str(message['from']['id'])): return
+def removeProduct(message:telebot.types.Message) -> None:
+    if not checkUser(str(message.from_user.id)): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
         bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
         return
-    keyboard = types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
+    keyboard = telebot.types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
     for id in db.database.keys(): keyboard.add(id)
     new_msg = bot.send_message(chat_id=USER_ID,text="Remove product from which watchlist?",reply_markup=keyboard)
     bot.register_next_step_handler(message=new_msg,callback=removeProduct_step_1)
 
-def removeProduct_step_1(message:types.Message) -> None:
+def removeProduct_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     del_id = message.text
-    keyboard = types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
+    keyboard = telebot.types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
     for prod in db.database[del_id].products:
         keyboard.add(prod.name if prod.name is not None else prod.fullName)
     new_msg = bot.send_message(chat_id=USER_ID,text="Remove which product?",reply_markup=keyboard)
     bot.register_next_step_handler(message=new_msg,callback=removeProduct_step_2,args=(del_id))
 
-def removeProduct_step_2(message:types.Message,id:str) -> None:
+def removeProduct_step_2(message:telebot.types.Message,id:str) -> None:
     if command_switch(message): return
     name = message.text
     db.database[id].removeProduct(name)
@@ -270,8 +271,8 @@ def removeProduct_step_2(message:types.Message,id:str) -> None:
 
 
 @bot.message_handler(commands=['listAll'])
-def listAll(message:types.Message) -> None:
-    if not checkUser(str(message['from']['id'])): return
+def listAll(message:telebot.types.Message) -> None:
+    if not checkUser(str(message.from_user.id)): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
         bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
@@ -281,8 +282,8 @@ def listAll(message:types.Message) -> None:
 
 
 @bot.message_handler(commands=['update'])
-def update(message:types.Message) -> None:
-    if not checkUser(str(message['from']['id'])): return
+def update(message:telebot.types.Message) -> None:
+    if not checkUser(str(message.from_user.id)): return
     log(message,logger)
     dailyUpdate(USER_ID)
 
@@ -302,11 +303,9 @@ def update(message:types.Message) -> None:
 if (__name__ == "__main__"):
 
     if firstRun():
-        print("All needed files created, run again to start\n")
+        print("All needed files created, make sure to fill the .env file and run again to start\n")
         exit(0)
     
-    bot.config['api_key'] = getenv("TOKEN")    
-
     print("Jaf's AWS (Amazon Web Scraper) Telegram bot started\n")
     logger.info("Jaf's AWS (Amazon Web Scraper) server started")
 
