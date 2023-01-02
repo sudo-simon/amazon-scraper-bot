@@ -22,9 +22,9 @@ class Database:
                 if ((name is not None) and (len(name) > 0)): self.name = name
 
             def __str__(self) -> str:
-                return f"{self.name if (self.name is not None) else self.fullName}: {self.price} €"
+                return f"{self.name if (self.name is not None) else self.fullName}: {self.price:.2f} €"
             def __repr__(self) -> str:
-                return f"{self.name if (self.name is not None) else self.fullName}: {self.price} €"
+                return f"{self.name if (self.name is not None) else self.fullName}: {self.price:.2f} €"
 
             def __eq__(self, __o: object) -> bool:
                 if (isinstance(__o, self.__class__)):
@@ -40,7 +40,7 @@ class Database:
                 return False
 
 
-            def webScrape(self, max_retries:int=10) -> None:
+            def webScrape(self, max_retries:int=20) -> None:
 
                 fullName = None
                 price = None
@@ -114,13 +114,13 @@ class Database:
             ret = self.id+":\n"
             for prod in self.products:
                 ret += f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n"
-            ret += f"\nTotal: {self.total} €\n" + (f"Target: {self.targetPrice}\n" if self.targetPrice is not None else "")
+            ret += f"\nTotal: {self.total:.2f} €\n" + (f"Target: {self.targetPrice}\n" if self.targetPrice is not None else "")
             return ret
         def __repr__(self) -> str:
             ret = self.id+":\n"
             for prod in self.products:
                 ret += f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n"
-            ret += f"\nTotal: {self.total} €\n" + (f"Target: {self.targetPrice}\n" if self.targetPrice is not None else "")
+            ret += f"\nTotal: {self.total:.2f} €\n" + (f"Target: {self.targetPrice}\n" if self.targetPrice is not None else "")
             return ret
 
         def toDict(self) -> dict:
@@ -143,7 +143,7 @@ class Database:
                 new_prod = self.Product("fakeurl")
                 new_prod.fromDict(prod_d)
                 self.products.append(new_prod)
-            self.products.sort()
+            self.products.sort(key=lambda p: p.name if p.name is not None else p.fullName)
 
         
         def editTargetPrice(self, targetPrice:Union[float,None]) -> None:
@@ -151,28 +151,26 @@ class Database:
 
 
         def addProduct(self, url:str, name:str=None) -> int:
-            if (self.findProduct(name) is not None): return -1
+            #if (self.findProduct(name) is not None): return -1
             new_prod = self.Product(url,name)
             self.total += new_prod.price
             self.products.append(new_prod)
-            self.products.sort()
+            self.products.sort(key=lambda p: p.name if p.name is not None else p.fullName)
             return 0
         
         def removeProduct(self, name:str) -> Product:
-            index = self.findProduct(name)
+            index = self.findProductLinear(name)
             if (index is not None):
                 ret = self.products.pop(index)
                 self.total -= ret.price
-                self.products.sort()
+                self.products.sort(key=lambda p: p.name if p.name is not None else p.fullName)
                 return ret
             return None
         
 
         def findProduct(self, name:str) -> Union[int,None]:
-            
             top = len(self.products)-1
-            bot = 0
-            
+            bot = 0     
             while (top > bot):
                 mid = (top+bot)//2
                 elem = self.products[mid]
@@ -185,7 +183,12 @@ class Database:
                 if (name > elem_name):
                     bot = mid
                     continue
-            
+            return None
+
+        def findProductLinear(self, name:str) -> int:
+            for index,prod in enumerate(self.products):
+                if (name == (prod.name if prod.name is not None else prod.fullName)):
+                    return index
             return None
 
 
@@ -195,9 +198,13 @@ class Database:
                 diff += self.products[i].updatePrice()
             self.lastTotal = self.total
             self.total -= diff
-            if ((diff >= 5.0) or (self.total <= self.targetPrice)):
-                #self.writeUpdatesToJson()
+            if (self.targetPrice is not None):
+                if (self.total <= self.targetPrice):
+                    self.writeUpdatedWatchlists(self.id)
+                    return diff
+            if (diff >= 5.0):
                 self.writeUpdatedWatchlists(self.id)
+                return diff
             return diff
 
 
@@ -259,6 +266,7 @@ class Database:
         ret = ""
         for wl in self.database.values():
             ret += str(wl)
+            ret += "\n---\n"
         return ret
     def __repr__(self) -> str:
         ret = ""

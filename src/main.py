@@ -83,7 +83,7 @@ def dailyUpdate(user_id:str=USER_ID) -> None:
         updated_ids = updates_txt.readlines()
     for id in updated_ids:
         id = id.strip()
-        msg += (id+":\n") + str(db.database[id])
+        msg += str(db.database[id])
     if (msg == "Some of your watchlists have been updated!\n"): return
     sent = bot.send_message(chat_id=user_id,text=msg)
     log(sent,logger)
@@ -119,7 +119,10 @@ def command_switch(message:telebot.types.Message) -> bool:
         "/addWatchlist":addWatchlist,
         "/removeWatchlist":removeWatchlist,
         "/addProduct":addProduct,
-        "/removeProduct":removeProduct
+        "/removeProduct":removeProduct,
+        "listAll":listAll,
+        "update":update,
+        "cmd":cmd
     }
     if (message.text in switcher.keys()):
         switcher.get(message.text)(message)
@@ -137,6 +140,7 @@ def start(message:telebot.types.Message) -> None:
         return
     else:
         bot.send_message(chat_id=USER_ID,text=f"Hi {message.from_user.first_name}")
+        log(message,logger)
 
 
 
@@ -160,18 +164,20 @@ def addWatchlist_step_1(message:telebot.types.Message) -> None:
     new_msg = bot.send_message(chat_id=USER_ID,text="Do you want to set a target price for this watchlist? (Number if affirmative, \"No\") otherwise")
     bot.register_next_step_handler(message=new_msg,callback=addWatchlist_step_2,args=(wl_id))
 
-def addWatchlist_step_2(message:telebot.types.Message,id:str) -> None:
+def addWatchlist_step_2(message:telebot.types.Message,args:str) -> None:
     if command_switch(message): return
+    #bot.send_message(chat_id=USER_ID,text=f"args = {str(args)}")
     targetPrice = str(message.text)
     if (targetPrice in ["No","no"]):
         db.write(DATABASE_PATH)
     elif (targetPrice.replace('.','',1).isdigit()):
-        db.database[id].editTargetPrice(float(targetPrice))
+        db.database[args].editTargetPrice(float(targetPrice))
         db.write(DATABASE_PATH)
     else:
+        db.removeWatchlist(args[0])
         bot.send_message(chat_id=USER_ID,text=f"{targetPrice} is not a valid answer")
         return
-    final_msg = bot.send_message(chat_id=USER_ID,text=f"Watchlist \"{id}\" created!")
+    final_msg = bot.send_message(chat_id=USER_ID,text=f"Watchlist \"{args}\" created!")
     log(final_msg,logger)
 
 
@@ -216,25 +222,25 @@ def addProduct_step_1(message:telebot.types.Message) -> None:
     new_msg = bot.send_message(chat_id=USER_ID,text="Product URL:")
     bot.register_next_step_handler(message=new_msg,callback=addProduct_step_2,args=(add_id))
 
-def addProduct_step_2(message:telebot.types.Message,id:str) -> None:
+def addProduct_step_2(message:telebot.types.Message,args:str) -> None:
     if command_switch(message): return
     url = str(message.text)
     if (not url.startswith("https://")):
         bot.send_message(chat_id=USER_ID,text=f"Invalid URL: {url}")
         return
     new_msg = bot.send_message(chat_id=USER_ID,text="Product name (optional, 64 characters max):")
-    bot.register_next_step_handler(message=new_msg,callback=addProduct_step_3,args=(id,url))
+    bot.register_next_step_handler(message=new_msg,callback=addProduct_step_3,args=(args,url))
 
-def addProduct_step_3(message:telebot.types.Message,id:str,url:str) -> None:
+def addProduct_step_3(message:telebot.types.Message,args:tuple) -> None:
     if command_switch(message): return
     name = message.text
     if (len(name) > 64):
         bot.send_message(chat_id=USER_ID,text="Invalid name: name longer than 64 characters")
         return
-    if (len(name) == 0): name = None
-    db.database[id].addProduct(url,name)
+    if (name in ["No","no"]): name = None
+    db.database[args[0]].addProduct(args[1],name)
     db.write(DATABASE_PATH)
-    final_msg = bot.send_message(chat_id=USER_ID, text=f"\"{name if name is not None else 'Product'}\" added to watchlist \"{id}\"!")
+    final_msg = bot.send_message(chat_id=USER_ID, text=f"\"{name if name is not None else 'Product'}\" added to watchlist \"{args[0]}\"!")
     log(final_msg,logger)
 
 
@@ -260,12 +266,13 @@ def removeProduct_step_1(message:telebot.types.Message) -> None:
     new_msg = bot.send_message(chat_id=USER_ID,text="Remove which product?",reply_markup=keyboard)
     bot.register_next_step_handler(message=new_msg,callback=removeProduct_step_2,args=(del_id))
 
-def removeProduct_step_2(message:telebot.types.Message,id:str) -> None:
+def removeProduct_step_2(message:telebot.types.Message,args:str) -> None:
     if command_switch(message): return
     name = message.text
-    db.database[id].removeProduct(name)
+    db.database[args].removeProduct(name)
+    #bot.send_message(chat_id=USER_ID,text=f"args = {args}")
     db.write(DATABASE_PATH)
-    final_msg = bot.send_message(chat_id=USER_ID,text=f"{name} removed from watchlist \"{id}\"!")
+    final_msg = bot.send_message(chat_id=USER_ID,text=f"{name} removed from watchlist \"{args}\"!")
     log(final_msg,logger)
 
 
@@ -289,7 +296,20 @@ def update(message:telebot.types.Message) -> None:
 
 
 
-
+@bot.message_handler(commands=['cmd'])
+def cmd(message:telebot.types.Message) -> None:
+    if not checkUser(str(message.from_user.id)): return
+    log(message,logger)
+    msg = (
+        "Command list of this bot:\n\n"
+        "/addWatchlist\n"
+        "/removeWatchlist\n"
+        "/addProduct\n"
+        "/removeProduct\n"
+        "/listAll\n"
+        "/update"
+    )
+    bot.send_message(chat_id=USER_ID,text=msg)
 
 
 
