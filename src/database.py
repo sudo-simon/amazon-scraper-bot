@@ -104,22 +104,23 @@ class Database:
                     self.loadFromJson(json_path)
                 except: return
             else:
-                if (' ' in id): return
+                #if (' ' in id): return
                 self.id = id
                 self.products = []
                 if (targetPrice is not None): self.targetPrice = targetPrice
                 self.total = 0.0
 
         def __str__(self) -> str:
-            ret = ""
+            ret = self.id+":\n"
             for prod in self.products:
                 ret += f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n"
-            ret += f"\nTotal: {self.total} €\n"
+            ret += f"\nTotal: {self.total} €\n" + (f"Target: {self.targetPrice}\n" if self.targetPrice is not None else "")
             return ret
         def __repr__(self) -> str:
-            ret = ""
+            ret = self.id+":\n"
             for prod in self.products:
                 ret += f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n"
+            ret += f"\nTotal: {self.total} €\n" + (f"Target: {self.targetPrice}\n" if self.targetPrice is not None else "")
             return ret
 
         def toDict(self) -> dict:
@@ -142,6 +143,7 @@ class Database:
                 new_prod = self.Product("fakeurl")
                 new_prod.fromDict(prod_d)
                 self.products.append(new_prod)
+            self.products.sort()
 
         
         def editTargetPrice(self, targetPrice:Union[float,None]) -> None:
@@ -253,14 +255,31 @@ class Database:
     def __init__(self) -> None:
         self.database = dict()
 
+    def __str__(self) -> str:
+        ret = ""
+        for wl in self.database.values():
+            ret += str(wl)
+        return ret
+    def __repr__(self) -> str:
+        ret = ""
+        for wl in self.database.values():
+            ret += str(wl)
+        return ret
+
 
     def addWatchlist(self, id:str, targetPrice:float=None, json_path:str=None) -> None:
         new_watchlist = self.Watchlist(id,targetPrice,json_path)
         self.database[id] = new_watchlist
 
-    def removeWatchlist(self, id:str) -> Watchlist:
+    def removeWatchlist(self, id:str) -> None:
         if (id not in self.database.keys()): return None
-        return self.database.pop(id)
+        prods = []
+        for prod in self.database[id].products:
+            prods.append(prod.name if prod.name is not None else prod.fullName)
+        for name in prods:
+            self.database[id].removeProduct(name)
+        self.database.pop(id)
+        return
 
     
     def toDict(self) -> dict:

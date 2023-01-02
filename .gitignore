@@ -130,4 +130,5 @@ dmypy.json
 
 
 *.json
+*.txt
 *.env
