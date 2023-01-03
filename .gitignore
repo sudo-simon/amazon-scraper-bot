@@ -133,3 +133,5 @@ dmypy.json
 *.txt
 *.env
 *.out
+telegramBot.py
+newMain.py

@@ -1,21 +1,25 @@
 from database import Database
 import logging
 from dotenv import load_dotenv
+from sys import argv
 from os import getenv,makedirs
 from os.path import isfile,isdir,dirname
 import schedule
 from time import sleep
 import telebot
-from threading import Thread
+import threading
+
 
 
 ##?## ------------------------------ VARIABLES ------------------------------ ##?##
+
+
 
 load_dotenv()
 RESOURCES_PATH = "./resources/"
 DATABASE_PATH = "./resources/database.json"
 UPDATES_PATH = "./resources/updates.txt"
-SCHEDULED_TIME_THREAD = "14:00"
+SCHEDULED_TIME = "14:00"
 #UPDATING = False
 USER_ID = ""
 bot:telebot.TeleBot
@@ -25,7 +29,9 @@ if (isfile(".env")):
     bot = telebot.TeleBot(getenv("TOKEN"))
 
 
+
 ##?## ------------------------------ LOGGING ------------------------------ ##?##
+
 
 
 def logger_init() -> logging.Logger:
@@ -47,7 +53,10 @@ def log(message:telebot.types.Message,logger:logging.Logger) -> None:
 logger = logger_init()
 
 
+
 ##?## ------------------------------ FUNCTIONS ------------------------------ ##?##
+
+
 
 def firstRun() -> bool:
     flag = False
@@ -68,13 +77,15 @@ def firstRun() -> bool:
         flag = True
     return flag
 
-def cleanTxtFile(path:str) -> None:
+
+def cleanUpdatesFile(path:str) -> None:
     with open(path,"w",encoding='utf-8') as txt:
         txt.write("")
 
+
 def dailyUpdate(user_id:str=USER_ID) -> None:
     db.read(DATABASE_PATH)
-    cleanTxtFile(UPDATES_PATH)
+    cleanUpdatesFile(UPDATES_PATH)
     for id in db.database.keys():
         db.database[id].updatePrices()
     msg = "Some of your watchlists have been updated!\n"
@@ -84,9 +95,11 @@ def dailyUpdate(user_id:str=USER_ID) -> None:
     for id in updated_ids:
         id = id.strip()
         msg += str(db.database[id])
-    if (msg == "Some of your watchlists have been updated!\n"): return
+    if (msg == "Some of your watchlists have been updated!\n"):
+        msg = "Your watchlists have no relevant updates"
     sent = bot.send_message(chat_id=user_id,text=msg)
     log(sent,logger)
+
 
 def updateRoutine() -> None:
     while True:
@@ -94,35 +107,41 @@ def updateRoutine() -> None:
         sleep(60)
 
 
+def isValidTime(t:str) -> bool:
+    return (
+        (len(t) == 5) and
+        (t.count(':') == 1) and
+        (t.replace(':','',1).isdecimal()) and
+        (int(t[:2]) <= 23) and
+        (int(t[3:]) <= 59)
+    )
+
+
 """
 #! DO NOT USE UNTIL AUX FUNCTIONS GET WRITTEN
-def rescheduleUpdate(scheduled_time:str,user_id:str) -> None:
+def rescheduleUpdate(scheduled_time:str,user_id:str) -> bool:
+    if (not isValidTime(scheduled_time)): return False
     schedule.clear()
-    SCHEDULED_TIME_THREAD = scheduled_time
-    schedule.every().day.at(SCHEDULED_TIME_THREAD).do(dailyUpdate,user_id,allWatchlists)
+    schedule.every().day.at(scheduled_time).do(dailyUpdate,user_id)
     print("~> Daily update rescheduled at "+scheduled_time)
     logger.info("Daily update rescheduled at "+scheduled_time)
 """
 
 
-
-
-
-##?## ------------------------------ BOT ROUTES ------------------------------ ##?##
-
 def checkUser(chat_id:str) -> bool:
     return chat_id == USER_ID
+
 
 def command_switch(message:telebot.types.Message) -> bool:
     switcher = {
         "/start":start,
-        "/addWatchlist":addWatchlist,
-        "/removeWatchlist":removeWatchlist,
-        "/addProduct":addProduct,
-        "/removeProduct":removeProduct,
-        "listAll":listAll,
-        "update":update,
-        "cmd":cmd
+        "/addwatchlist":addwatchlist,
+        "/removewatchlist":removewatchlist,
+        "/addproduct":addproduct,
+        "/removeproduct":removeproduct,
+        "/listall":listall,
+        "/update":update,
+        "/cmd":cmd
     }
     if (message.text in switcher.keys()):
         switcher.get(message.text)(message)
@@ -131,12 +150,17 @@ def command_switch(message:telebot.types.Message) -> bool:
 
 
 
+##?## ------------------------------ BOT ROUTES ------------------------------ ##?##
+
+
+
+#? START
+
 @bot.message_handler(commands=['start'])
 def start(message:telebot.types.Message) -> None:
-    if (str(message.from_user.id) != USER_ID):
+    if (not checkUser(str(message.from_user.id))):
         bot.send_message(chat_id=USER_ID,text=f"User {message.from_user.id} ({message.from_user.first_name}) tried to connect to this bot")
         log(message,logger)
-        #print(f"User_id = {str(message['from']['id'])}\nChat_id = {str(message['chat']['id'])}")
         return
     else:
         bot.send_message(chat_id=USER_ID,text=f"Hi {message.from_user.first_name}")
@@ -144,14 +168,16 @@ def start(message:telebot.types.Message) -> None:
 
 
 
-@bot.message_handler(commands=['addWatchlist'])
-def addWatchlist(message:telebot.types.Message) -> None:
-    if not checkUser(str(message.from_user.id)): return
+#? ADDWATCHLIST
+
+@bot.message_handler(commands=['addwatchlist'])
+def addwatchlist(message:telebot.types.Message) -> None:
+    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     new_msg = bot.send_message(chat_id=USER_ID,text="Name of the watchlist to be created? (64 characters max, unique)")
-    bot.register_next_step_handler(message=new_msg,callback=addWatchlist_step_1)
+    bot.register_next_step_handler(message=new_msg,callback=addwatchlist_step_1)
 
-def addWatchlist_step_1(message:telebot.types.Message) -> None:
+def addwatchlist_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     wl_id = message.text
     if (len(wl_id) > 64):
@@ -162,11 +188,10 @@ def addWatchlist_step_1(message:telebot.types.Message) -> None:
         return
     db.addWatchlist(wl_id)
     new_msg = bot.send_message(chat_id=USER_ID,text="Do you want to set a target price for this watchlist? (Number if affirmative, \"No\") otherwise")
-    bot.register_next_step_handler(message=new_msg,callback=addWatchlist_step_2,args=(wl_id))
+    bot.register_next_step_handler(message=new_msg,callback=addwatchlist_step_2,args=(wl_id))
 
-def addWatchlist_step_2(message:telebot.types.Message,args:str) -> None:
+def addwatchlist_step_2(message:telebot.types.Message,args:str) -> None:
     if command_switch(message): return
-    #bot.send_message(chat_id=USER_ID,text=f"args = {str(args)}")
     targetPrice = str(message.text)
     if (targetPrice in ["No","no"]):
         db.write(DATABASE_PATH)
@@ -182,56 +207,86 @@ def addWatchlist_step_2(message:telebot.types.Message,args:str) -> None:
 
 
 
-@bot.message_handler(commands=['removeWatchlist'])
-def removeWatchlist(message:telebot.types.Message) -> None:
-    if not checkUser(str(message.from_user.id)): return
+#? REMOVEWATCHLIST
+
+@bot.message_handler(commands=['removewatchlist'])
+def removewatchlist(message:telebot.types.Message) -> None:
+    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
         bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
         return
-    keyboard = telebot.types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
+    keyboard = telebot.types.ReplyKeyboardMarkup(
+        row_width=1,
+        one_time_keyboard=True,
+        selective=True,
+        resize_keyboard=True
+    )
     for id in db.database.keys(): keyboard.add(id)
-    new_msg = bot.send_message(chat_id=USER_ID,text="Which watchlist do you want to remove?",reply_markup=keyboard)
-    bot.register_next_step_handler(message=new_msg,callback=removeWatchlist_step_1)
+    new_msg = bot.send_message(
+        chat_id=USER_ID,
+        text="Which watchlist do you want to remove?",
+        reply_markup=keyboard
+    )
+    bot.register_next_step_handler(message=new_msg,callback=removewatchlist_step_1)
 
-def removeWatchlist_step_1(message:telebot.types.Message) -> None:
+def removewatchlist_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     del_id = message.text
     db.removeWatchlist(del_id)
     db.write(DATABASE_PATH)
-    final_msg = bot.send_message(chat_id=USER_ID,text=f"Watchlist \"{del_id}\" removed!")
+    final_msg = bot.send_message(
+        chat_id=USER_ID,
+        text=f"Watchlist \"{del_id}\" removed!",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
+    )
     log(final_msg,logger)
 
 
 
-@bot.message_handler(commands=['addProduct'])
-def addProduct(message:telebot.types.Message) -> None:
-    if not checkUser(str(message.from_user.id)): return
+#? ADDPRODUCT
+
+@bot.message_handler(commands=['addproduct'])
+def addproduct(message:telebot.types.Message) -> None:
+    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
         bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
         return
-    keyboard = telebot.types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
+    keyboard = telebot.types.ReplyKeyboardMarkup(
+        row_width=1,
+        one_time_keyboard=True,
+        selective=True,
+        resize_keyboard=True
+    )
     for id in db.database.keys(): keyboard.add(id)
-    new_msg = bot.send_message(chat_id=USER_ID,text="Add product to which watchlist?",reply_markup=keyboard)
-    bot.register_next_step_handler(message=new_msg,callback=addProduct_step_1)
+    new_msg = bot.send_message(
+        chat_id=USER_ID,
+        text="Add product to which watchlist?",
+        reply_markup=keyboard
+    )
+    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_1)
 
-def addProduct_step_1(message:telebot.types.Message) -> None:
+def addproduct_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     add_id = message.text
-    new_msg = bot.send_message(chat_id=USER_ID,text="Product URL:")
-    bot.register_next_step_handler(message=new_msg,callback=addProduct_step_2,args=(add_id))
+    new_msg = bot.send_message(
+        chat_id=USER_ID,
+        text="Product URL:",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
+    )
+    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_2,args=(add_id))
 
-def addProduct_step_2(message:telebot.types.Message,args:str) -> None:
+def addproduct_step_2(message:telebot.types.Message,args:str) -> None:
     if command_switch(message): return
     url = str(message.text)
     if (not url.startswith("https://")):
         bot.send_message(chat_id=USER_ID,text=f"Invalid URL: {url}")
         return
     new_msg = bot.send_message(chat_id=USER_ID,text="Product name (optional, 64 characters max):")
-    bot.register_next_step_handler(message=new_msg,callback=addProduct_step_3,args=(args,url))
+    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_3,args=(args,url))
 
-def addProduct_step_3(message:telebot.types.Message,args:tuple) -> None:
+def addproduct_step_3(message:telebot.types.Message,args:tuple) -> None:
     if command_switch(message): return
     name = message.text
     if (len(name) > 64):
@@ -245,41 +300,66 @@ def addProduct_step_3(message:telebot.types.Message,args:tuple) -> None:
 
 
 
-@bot.message_handler(commands=['removeProduct'])
-def removeProduct(message:telebot.types.Message) -> None:
-    if not checkUser(str(message.from_user.id)): return
+#? REMOVEPRODUCT
+
+@bot.message_handler(commands=['removeproduct'])
+def removeproduct(message:telebot.types.Message) -> None:
+    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
         bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
         return
-    keyboard = telebot.types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
+    keyboard = telebot.types.ReplyKeyboardMarkup(
+        row_width=1,
+        one_time_keyboard=True,
+        selective=True,
+        resize_keyboard=True
+    )
     for id in db.database.keys(): keyboard.add(id)
-    new_msg = bot.send_message(chat_id=USER_ID,text="Remove product from which watchlist?",reply_markup=keyboard)
-    bot.register_next_step_handler(message=new_msg,callback=removeProduct_step_1)
+    new_msg = bot.send_message(
+        chat_id=USER_ID,
+        text="Remove product from which watchlist?",
+        reply_markup=keyboard
+    )
+    bot.register_next_step_handler(message=new_msg,callback=removeproduct_step_1)
 
-def removeProduct_step_1(message:telebot.types.Message) -> None:
+def removeproduct_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     del_id = message.text
-    keyboard = telebot.types.ReplyKeyboardMarkup(row_width=1,one_time_keyboard=True,selective=False)
+    keyboard = telebot.types.ReplyKeyboardMarkup(
+        row_width=1,
+        one_time_keyboard=True,
+        selective=True,
+        resize_keyboard=True
+    )
     for prod in db.database[del_id].products:
         keyboard.add(prod.name if prod.name is not None else prod.fullName)
-    new_msg = bot.send_message(chat_id=USER_ID,text="Remove which product?",reply_markup=keyboard)
-    bot.register_next_step_handler(message=new_msg,callback=removeProduct_step_2,args=(del_id))
+    new_msg = bot.send_message(
+        chat_id=USER_ID,
+        text="Remove which product?",
+        reply_markup=keyboard
+    )
+    bot.register_next_step_handler(message=new_msg,callback=removeproduct_step_2,args=(del_id))
 
-def removeProduct_step_2(message:telebot.types.Message,args:str) -> None:
+def removeproduct_step_2(message:telebot.types.Message,args:str) -> None:
     if command_switch(message): return
     name = message.text
     db.database[args].removeProduct(name)
-    #bot.send_message(chat_id=USER_ID,text=f"args = {args}")
     db.write(DATABASE_PATH)
-    final_msg = bot.send_message(chat_id=USER_ID,text=f"{name} removed from watchlist \"{args}\"!")
+    final_msg = bot.send_message(
+        chat_id=USER_ID,
+        text=f"{name} removed from watchlist \"{args}\"!",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
+    )
     log(final_msg,logger)
 
 
 
-@bot.message_handler(commands=['listAll'])
-def listAll(message:telebot.types.Message) -> None:
-    if not checkUser(str(message.from_user.id)): return
+#? LISTALL
+
+@bot.message_handler(commands=['listall'])
+def listall(message:telebot.types.Message) -> None:
+    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
         bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
@@ -288,17 +368,21 @@ def listAll(message:telebot.types.Message) -> None:
 
 
 
+#? UPDATE
+
 @bot.message_handler(commands=['update'])
 def update(message:telebot.types.Message) -> None:
-    if not checkUser(str(message.from_user.id)): return
+    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     dailyUpdate(USER_ID)
 
 
 
+#? CMD
+
 @bot.message_handler(commands=['cmd'])
 def cmd(message:telebot.types.Message) -> None:
-    if not checkUser(str(message.from_user.id)): return
+    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     msg = (
         "Command list of this bot:\n\n"
@@ -318,6 +402,8 @@ def cmd(message:telebot.types.Message) -> None:
 
 
 
+
+
 ##?## ------------------------------ MAIN ------------------------------ ##?##
 
 if (__name__ == "__main__"):
@@ -325,14 +411,24 @@ if (__name__ == "__main__"):
     if firstRun():
         print("All needed files created, make sure to fill the .env file and run again to start\n")
         exit(0)
-    
-    print("Jaf's AWS (Amazon Web Scraper) Telegram bot started\n")
-    logger.info("Jaf's AWS (Amazon Web Scraper) server started")
+
+    if (len(argv) > 1):
+        if (argv[1] in ["--help","-h"]):
+            print(
+                "Optional arguments of main.py:\n"
+                "<scheduledTime>: the time of day at which the bot sends its daily update, formatted as HH:MM\n"
+            )
+            exit(0)
+        if (isValidTime(argv[1])):
+            SCHEDULED_TIME = argv[1]
 
     if (isfile(DATABASE_PATH)): db.read(DATABASE_PATH)
 
-    schedule.every().day.at(SCHEDULED_TIME_THREAD).do(dailyUpdate,USER_ID)
-    dailyUpdateThread = Thread(target=updateRoutine,args=())
+    schedule.every().day.at(SCHEDULED_TIME).do(dailyUpdate,USER_ID)
+    dailyUpdateThread = threading.Thread(target=updateRoutine)
+
+    print("Jaf's AWS (Amazon Web Scraper) Telegram bot started\n")
+    logger.info("Jaf's AWS (Amazon Web Scraper) server started")
 
     dailyUpdateThread.start()
     bot.infinity_polling()
