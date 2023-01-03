@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+*.json
+*.txt
+*.env
+*.out
+telegramBot.py
+newMain.py
