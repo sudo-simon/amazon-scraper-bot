@@ -5,7 +5,7 @@ Python web scraper for Amazon offers with Telegram bot integration
 Developed and tested with Python 3.8.10
 
 
-## Required python lybraries
+## Required python libraries
 
 - beautifulsoup4
 - pyTelegramBotAPI
