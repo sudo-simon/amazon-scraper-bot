@@ -215,7 +215,7 @@ def removewatchlist(message:telebot.types.Message) -> None:
     if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
-        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
+        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addwatchlist")
         return
     keyboard = telebot.types.ReplyKeyboardMarkup(
         row_width=1,
@@ -252,7 +252,7 @@ def addproduct(message:telebot.types.Message) -> None:
     if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
-        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
+        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addwatchlist")
         return
     keyboard = telebot.types.ReplyKeyboardMarkup(
         row_width=1,
@@ -308,7 +308,7 @@ def removeproduct(message:telebot.types.Message) -> None:
     if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
-        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
+        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addwatchlist")
         return
     keyboard = telebot.types.ReplyKeyboardMarkup(
         row_width=1,
@@ -363,7 +363,7 @@ def listall(message:telebot.types.Message) -> None:
     if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
-        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addWatchlist")
+        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addwatchlist")
         return
     bot.send_message(chat_id=USER_ID,text=str(db))
 
