@@ -280,7 +280,7 @@ def addproduct_step_1(message:telebot.types.Message) -> None:
 def addproduct_step_2(message:telebot.types.Message,args:str) -> None:
     if command_switch(message): return
     url = str(message.text)
-    if (not url.startswith("https://")):
+    if (not url.startswith("https://") and not ("amazon" in url)):
         bot.send_message(chat_id=USER_ID,text=f"Invalid URL: {url}")
         return
     new_msg = bot.send_message(chat_id=USER_ID,text="Product name (optional, 64 characters max):")
@@ -386,11 +386,11 @@ def cmd(message:telebot.types.Message) -> None:
     log(message,logger)
     msg = (
         "Command list of this bot:\n\n"
-        "/addWatchlist\n"
-        "/removeWatchlist\n"
-        "/addProduct\n"
-        "/removeProduct\n"
-        "/listAll\n"
+        "/addwatchlist\n"
+        "/removewatchlist\n"
+        "/addproduct\n"
+        "/removeproduct\n"
+        "/listall\n"
         "/update"
     )
     bot.send_message(chat_id=USER_ID,text=msg)
