@@ -21,12 +21,13 @@ DATABASE_PATH = "./resources/database.json"
 UPDATES_PATH = "./resources/updates.txt"
 SCHEDULED_TIME = "14:00"
 #UPDATING = False
+
 USER_ID = ""
 bot:telebot.TeleBot
-db = Database()
 if (isfile(".env")):
     USER_ID = getenv("MY_ID")
     bot = telebot.TeleBot(getenv("TOKEN"))
+db = Database()
 
 
 
@@ -280,8 +281,8 @@ def addproduct_step_1(message:telebot.types.Message) -> None:
 def addproduct_step_2(message:telebot.types.Message,args:str) -> None:
     if command_switch(message): return
     url = str(message.text)
-    if (not url.startswith("https://") and not ("amazon" in url)):
-        bot.send_message(chat_id=USER_ID,text=f"Invalid URL: {url}")
+    if (not url.startswith("https://") or (not ("amazon" in url) and (not ("amzn" in url)))):
+        bot.send_message(chat_id=USER_ID,text=f"Invalid URL: {url}\nMake sure to paste an Amazon URL")
         return
     new_msg = bot.send_message(chat_id=USER_ID,text="Product name (optional, 64 characters max):")
     bot.register_next_step_handler(message=new_msg,callback=addproduct_step_3,args=(args,url))
