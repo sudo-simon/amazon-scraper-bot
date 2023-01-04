@@ -58,7 +58,7 @@ class Database:
                     price_str = f"{whole_price.text.replace(',','.')}{cent_price.text}"
                     price = float(price_str)
 
-                    if (fullName is None): fullName = pageContent.find("span",id="productTitle").text
+                    if (fullName is None): fullName = pageContent.find("span",id="productTitle").text.strip()
 
                 if (self.fullName is None): self.fullName = fullName
                 self.lastPrice = self.price
@@ -194,6 +194,7 @@ class Database:
 
         def updatePrices(self) -> float:
             diff = 0.0
+            if (len(self.products) == 0): return 0.0
             for i in range(len(self.products)):
                 diff += self.products[i].updatePrice()
             self.lastTotal = self.total

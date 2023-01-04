@@ -98,7 +98,7 @@ def dailyUpdate(user_id:str=USER_ID) -> None:
         msg += str(db.database[id])
     if (msg == "Some of your watchlists have been updated!\n"):
         msg = "Your watchlists have no relevant updates"
-    sent = bot.send_message(chat_id=user_id,text=msg)
+    sent = bot.send_message(chat_id=user_id,text=msg,reply_markup=telebot.types.ReplyKeyboardRemove())
     log(sent,logger)
 
 
@@ -164,7 +164,11 @@ def start(message:telebot.types.Message) -> None:
         log(message,logger)
         return
     else:
-        bot.send_message(chat_id=USER_ID,text=f"Hi {message.from_user.first_name}")
+        bot.send_message(
+            chat_id=USER_ID,
+            text=f"Hi {message.from_user.first_name}",
+            reply_markup=telebot.types.ReplyKeyboardRemove()
+        )
         log(message,logger)
 
 
@@ -175,7 +179,11 @@ def start(message:telebot.types.Message) -> None:
 def addwatchlist(message:telebot.types.Message) -> None:
     if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
-    new_msg = bot.send_message(chat_id=USER_ID,text="Name of the watchlist to be created? (64 characters max, unique)")
+    new_msg = bot.send_message(
+        chat_id=USER_ID,
+        text="Name of the watchlist to be created? (64 characters max, unique)",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
+    )
     bot.register_next_step_handler(message=new_msg,callback=addwatchlist_step_1)
 
 def addwatchlist_step_1(message:telebot.types.Message) -> None:
@@ -327,6 +335,9 @@ def removeproduct(message:telebot.types.Message) -> None:
 def removeproduct_step_1(message:telebot.types.Message) -> None:
     if command_switch(message): return
     del_id = message.text
+    if (len(db.database[del_id].products) == 0):
+        bot.send_message(chat_id=USER_ID, text=f"Watchlist {del_id} is empty!")
+        return
     keyboard = telebot.types.ReplyKeyboardMarkup(
         row_width=1,
         one_time_keyboard=True,
@@ -363,9 +374,13 @@ def listall(message:telebot.types.Message) -> None:
     if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
     if (len(db.database.keys()) == 0):
-        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addwatchlist")
+        bot.send_message(
+            chat_id=USER_ID,
+            text="You don't have any watchlists yet! Create one first using /addwatchlist",
+            reply_markup=telebot.types.ReplyKeyboardRemove()
+        )
         return
-    bot.send_message(chat_id=USER_ID,text=str(db))
+    bot.send_message(chat_id=USER_ID,text=str(db),reply_markup=telebot.types.ReplyKeyboardRemove())
 
 
 
@@ -394,7 +409,7 @@ def cmd(message:telebot.types.Message) -> None:
         "/listall\n"
         "/update"
     )
-    bot.send_message(chat_id=USER_ID,text=msg)
+    bot.send_message(chat_id=USER_ID,text=msg,reply_markup=telebot.types.ReplyKeyboardRemove())
 
 
 
