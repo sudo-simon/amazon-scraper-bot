@@ -40,7 +40,7 @@ class Database:
                 return False
 
 
-            def webScrape(self, max_retries:int=20) -> None:
+            def webScrape(self, max_retries:int=20) -> int:
 
                 fullName = None
                 price = None
@@ -60,10 +60,11 @@ class Database:
 
                     if (fullName is None): fullName = pageContent.find("span",id="productTitle").text.strip()
 
+                if (price is None): return -1
                 if (self.fullName is None): self.fullName = fullName
                 self.lastPrice = self.price
                 self.price = price
-                return
+                return 0
 
 
             def updatePrice(self) -> float:
@@ -158,30 +159,30 @@ class Database:
             self.products.sort(key=lambda p: p.name if p.name is not None else p.fullName)
             return 0
         
-        def removeProduct(self, name:str) -> Product:
-            index = self.findProductLinear(name)
+        def removeProduct(self, name:str) -> int:
+            index = self.findProduct(name)
             if (index is not None):
                 ret = self.products.pop(index)
                 self.total -= ret.price
                 self.products.sort(key=lambda p: p.name if p.name is not None else p.fullName)
-                return ret
-            return None
+                return 0
+            return -1
         
 
         def findProduct(self, name:str) -> Union[int,None]:
             top = len(self.products)-1
             bot = 0     
-            while (top > bot):
+            while (top >= bot):
                 mid = (top+bot)//2
                 elem = self.products[mid]
                 elem_name = elem.name if elem.name is not None else elem.fullName
                 if (name == elem_name):
                     return mid
                 if (name < elem_name):
-                    top = mid
+                    top = (mid-1)
                     continue
                 if (name > elem_name):
-                    bot = mid
+                    bot = (mid+1)
                     continue
             return None
 
@@ -276,21 +277,35 @@ class Database:
         return ret
 
 
+
     def addWatchlist(self, id:str, targetPrice:float=None, json_path:str=None) -> None:
         new_watchlist = self.Watchlist(id,targetPrice,json_path)
         self.database[id] = new_watchlist
 
-    def removeWatchlist(self, id:str) -> None:
-        if (id not in self.database.keys()): return None
-        prods = []
-        for prod in self.database[id].products:
-            prods.append(prod.name if prod.name is not None else prod.fullName)
-        for name in prods:
-            self.database[id].removeProduct(name)
-        self.database.pop(id)
-        return
+
+
+    def removeWatchlist(self, name:str) -> int:
+        if (name not in self.database.keys()): return -1
+        prods = [prod.name if prod.name is not None else prod.fullName for prod in self.database[name].products]
+        #for prod in self.database[id].products:
+        #    prods.append(prod.name if prod.name is not None else prod.fullName)
+        for prod_name in prods:
+            self.database[name].removeProduct(prod_name)
+        self.database.pop(name)
+        return 0
 
     
+
+    def addProduct(self, wl_name:str, url:str, prod_name:str=None) -> int:
+        return self.database[wl_name].addProduct(url,prod_name)
+
+
+
+    def removeProduct(self, wl_name:str, prod_name:str) -> int:
+        return self.database[wl_name].removeProduct(prod_name)
+
+
+
     def toDict(self) -> dict:
         out_d = dict()
         for id,watchlist in self.database.items():
@@ -303,6 +318,7 @@ class Database:
             self.database[id].fromDict(id,watchlist_d)
 
     
+
     def read(self, filepath:str="./resources/database.json") -> int:
         r_obj = {}
         with open(filepath,"r",encoding='utf-8') as r_file:
