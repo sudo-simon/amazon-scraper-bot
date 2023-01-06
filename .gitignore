@@ -131,6 +131,7 @@ dmypy.json
 
 *.json
 *.txt
+*.csv
 *.env
 *.out
 telegramBot.py
