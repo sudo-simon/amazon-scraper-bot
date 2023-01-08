@@ -8,7 +8,7 @@ import schedule
 from time import sleep
 import telebot
 import threading
-from typing import Tuple
+from typing import Tuple,List
 
 
 
@@ -18,7 +18,7 @@ from typing import Tuple
 
 load_dotenv()
 RESOURCES_PATH = "./resources/"
-SCHEDULED_TIME = "14:00"
+SCHEDULED_TIME = "13:00"
 #UPDATING = False
 
 bot = telebot.TeleBot(getenv("TOKEN"))
@@ -55,6 +55,30 @@ logger = logger_init()
 
 ##?## ------------------------------ FUNCTIONS ------------------------------ ##?##
 
+def addPendingRequest(user_id:int) -> int:
+    userExists = False
+    with open(db.txtPath,"r+",encoding='utf-8') as pending_txt:
+        pending = [int(line.strip()) for line in pending_txt.readlines()]
+        if (user_id in pending): userExists = True
+        else:
+            pending.append(user_id)
+            pending_txt.writelines([str(pending_id) for pending_id in pending])
+    if (userExists): return -1
+    return 0
+
+def removePendingRequest(user_id:int) -> int:
+    userExists = True
+    with open(db.txtPath,"r+",encoding='utf-8') as pending_txt:
+        pending = [int(line.strip()) for line in pending_txt.readlines()]
+        if (user_id not in pending): userExists = False
+        else:
+            pending.remove(user_id)
+            pending_txt.writelines([str(pending_id) for pending_id in pending])
+    if(not userExists): return -1
+    return 0
+
+
+
 
 def askAdminAuthUser(user_id:int, user_firstName:str) -> None:
     keyboard = telebot.util.quick_markup({
@@ -67,18 +91,38 @@ def askAdminAuthUser(user_id:int, user_firstName:str) -> None:
         text=f"User {user_firstName} ({user_id}) has asked for authorization to use AWS Bot. Authorize?",
         reply_markup=keyboard
     )
+    
 
-@bot.callback_query_handler() #TODO: func filter???
-def adminAuthResponse(query:telebot.types.CallbackQuery) -> None:
+@bot.callback_query_handler(func=(lambda query: query.data[:4] == "yes:"))
+def adminAuthResponse_yes(query:telebot.types.CallbackQuery) -> None:
     if (query.from_user.id != db.adminId): return
     res,user_id = query.data.split(':')
     if (res == "yes"):
-        db.addUser(user_id)
+        if (db.addUser(user_id) == -1):
+            sent = bot.send_message(chat_id=db.adminId,text="User already in the database! Unexpected anomaly :(")
+            log(sent,logger)
+            return
         sent = bot.send_message(chat_id=user_id,text="You have been authorized to use this bot! :)")
         log(sent,logger)
-    elif (res == "no"):
+        removePendingRequest(user_id)
+        bot.send_message(chat_id=db.adminId,text="User authorized!",reply_markup=telebot.types.ReplyKeyboardRemove())
+    else:
+        sent = bot.send_message(chat_id=db.adminId,text="Unexpected callback query behaviour!")
+        log(sent,logger)
+
+@bot.callback_query_handler(func=(lambda query: query.data[:3] == "no:"))
+def adminAuthResponse_no(query:telebot.types.CallbackQuery) -> None:
+    if (query.from_user.id != db.adminId): return
+    res,user_id = query.data.split(':')
+    if (res == "no"):
         sent = bot.send_message(chat_id=user_id,text="You have not been authorized to use this bot :(")
         log(sent,logger)
+        removePendingRequest(user_id)
+        bot.send_message(chat_id=db.adminId,text="User not authorized!",reply_markup=telebot.types.ReplyKeyboardRemove())
+    else:
+        sent = bot.send_message(chat_id=db.adminId,text="Unexpected callback query behaviour!")
+        log(sent,logger)
+
 
 
 
@@ -95,10 +139,40 @@ def firstRun() -> bool:
 
 
 
-def dailyUpdate(user_id:int) -> None:
-    msg = db.updateWatchlists(user_id)
-    if (msg == ""): return
-    sent = bot.send_message(chat_id=user_id,text=msg,reply_markup=telebot.types.ReplyKeyboardRemove())
+def dailyUpdate() -> None:
+    db.loadDb()
+
+    for user_id in db.authorizedUsers:
+        tmp_msg = bot.send_message(chat_id=user_id,text=f"Automatic daily update running...")
+        try:
+            msg = db.updateWatchlists(user_id)
+        except UserNotAuthorizedException:
+            userNotAuthorizedException_message(user_id)
+            return
+        except UserNotFoundError:
+            userNotFoundError_message(user_id)
+            return
+        except:
+            unknownError_message(user_id)
+            return
+        bot.delete_message(chat_id=user_id,message_id=tmp_msg.id)
+        sent = bot.send_message(chat_id=user_id,text=(msg if msg != "" else "You have no updates"),reply_markup=telebot.types.ReplyKeyboardRemove())
+        log(sent,logger)
+
+    tmp_msg = bot.send_message(chat_id=db.adminId,text=f"Automatic daily update running...")
+    try:
+        msg = db.updateWatchlists(db.adminId)
+    except UserNotAuthorizedException:
+        userNotAuthorizedException_message(db.adminId)
+        return
+    except UserNotFoundError:
+        userNotFoundError_message(db.adminId)
+        return
+    except:
+        unknownError_message(db.adminId)
+        return
+    bot.delete_message(chat_id=db.adminId,message_id=tmp_msg.id)
+    sent = bot.send_message(chat_id=db.adminId,text=(msg if msg != "" else "You have no updates"),reply_markup=telebot.types.ReplyKeyboardRemove())
     log(sent,logger)
 
 
@@ -151,56 +225,64 @@ def command_switch(message:telebot.types.Message) -> bool:
 def userNotAuthorizedException_message(user_id:int) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text="Error: it seems like you are not an authorized user :("
+        text="Error: it seems like you are not an authorized user :(",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
 def userNotFoundError_message(user_id:int) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text=f"Error: user \"{user_id}\" not found!"
+        text=f"Error: user \"{user_id}\" not found!",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
 def watchlistNotFoundException_message(user_id:int, wl_name:str) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text=f"Error: watchlist \"{wl_name}\" not found!"
+        text=f"Error: watchlist \"{wl_name}\" not found!",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
 def watchlistDuplicateException_message(user_id:int, wl_name:str) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text=f"Error: watchlist \"{wl_name}\" already exists!"
+        text=f"Error: watchlist \"{wl_name}\" already exists!",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
 def productNotFoundException_message(user_id:int, prod_name:str) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text=f"Error: product \"{prod_name}\" not found!"
+        text=f"Error: product \"{prod_name}\" not found!",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
 def emptyProfileException_message(user_id:int) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text="Error: you have no watchlists yet!\nTry creating one with /addwatchlist"
+        text="You have no watchlists yet!\nTry creating one with /addwatchlist",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
 def emptyWatchlistException_message(user_id:int, wl_name:str) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text=f"Error: watchlist {wl_name} has no products!\nAdd one with /addproduct"
+        text=f"Watchlist {wl_name} has no products!\nAdd one with /addproduct",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
 def unknownError_message(user_id:int) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text="Unknown error: something went wrong!"
+        text="Unknown error: something went wrong!",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
@@ -215,6 +297,7 @@ def unknownError_message(user_id:int) -> None:
 @bot.message_handler(commands=['start'])
 def start(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    log(message,logger)
     sender_id = message.from_user.id
     if (sender_id == db.adminId):
         bot.send_message(
@@ -231,7 +314,6 @@ def start(message:telebot.types.Message) -> None:
             text=msg,
             reply_markup=telebot.types.ReplyKeyboardRemove()
         )
-    log(message,logger)
 
 
 
@@ -240,28 +322,31 @@ def start(message:telebot.types.Message) -> None:
 @bot.message_handler(commands=['addwatchlist'])
 def addwatchlist(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    log(message,logger)
     sender_id = message.from_user.id
     new_msg = bot.send_message(
         chat_id=sender_id,
         text="Name of the watchlist to be created? (64 characters max, unique)",
         reply_markup=telebot.types.ReplyKeyboardRemove()
     )
-    log(message,logger)
     bot.register_next_step_handler(message=new_msg,callback=addwatchlist_step_1,args=(sender_id))
 
 def addwatchlist_step_1(message:telebot.types.Message,args:int) -> None:
     if command_switch(message): return
+    log(message,logger)
     sender_id = args
     wl_name = message.text
     if (len(wl_name) > 64):
         bot.send_message(chat_id=sender_id,text="Invalid name: it is longer than 64 characters")
         return
-    new_msg = bot.send_message(chat_id=sender_id,text="Do you want to set a target price for this watchlist? (Number if yes, \"No\") otherwise")
+    new_msg = bot.send_message(chat_id=sender_id,text="Do you want to set a target price for this watchlist? (Number if yes, \"no\" otherwise)")
     bot.register_next_step_handler(message=new_msg,callback=addwatchlist_step_2,args=(sender_id,wl_name))
 
 def addwatchlist_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> None:
     if command_switch(message): return
+    log(message,logger)
     sender_id = args[0]
+    print(f"DEBUGGONE: sender_id = {sender_id}")
     wl_name = args[1]
     targetPrice = message.text
     if (targetPrice in ["No","no"]):
@@ -295,6 +380,7 @@ def addwatchlist_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> No
 @bot.message_handler(commands=['removewatchlist'])
 def removewatchlist(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    log(message,logger)
     sender_id = message.from_user.id
     try:
         wl_names = db.getWatchlists(sender_id)
@@ -322,11 +408,11 @@ def removewatchlist(message:telebot.types.Message) -> None:
         text="Which watchlist do you want to remove?",
         reply_markup=keyboard
     )
-    log(message,logger)
     bot.register_next_step_handler(message=new_msg,callback=removewatchlist_step_1,args=(sender_id))
 
 def removewatchlist_step_1(message:telebot.types.Message,args:int) -> None:
     if command_switch(message): return
+    log(message,logger)
     sender_id = args
     wl_name = message.text
     try:
@@ -350,17 +436,28 @@ def removewatchlist_step_1(message:telebot.types.Message,args:int) -> None:
     )
     log(final_msg,logger)
 
-#TODO: from here
+
 
 #? ADDPRODUCT
 
 @bot.message_handler(commands=['addproduct'])
 def addproduct(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
-    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
-    if (len(db.database.keys()) == 0):
-        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addwatchlist")
+    sender_id = message.from_user.id
+    try:
+        wl_names = db.getWatchlists(sender_id)
+    except UserNotAuthorizedException:
+        userNotAuthorizedException_message(sender_id)
+        return
+    except UserNotFoundError:
+        userNotFoundError_message(sender_id)
+        return
+    except EmptyProfileException:
+        emptyProfileException_message(sender_id)
+        return
+    except:
+        unknownError_message(sender_id)
         return
     keyboard = telebot.types.ReplyKeyboardMarkup(
         row_width=1,
@@ -368,43 +465,72 @@ def addproduct(message:telebot.types.Message) -> None:
         selective=True,
         resize_keyboard=True
     )
-    for id in db.database.keys(): keyboard.add(id)
+    for wl_name in wl_names: keyboard.add(wl_name)
     new_msg = bot.send_message(
-        chat_id=USER_ID,
-        text="Add product to which watchlist?",
+        chat_id=sender_id,
+        text="To which watchlist do you want to add a product?",
         reply_markup=keyboard
     )
-    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_1)
+    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_1,args=(sender_id))
 
-def addproduct_step_1(message:telebot.types.Message) -> None:
+def addproduct_step_1(message:telebot.types.Message,args:int) -> None:
     if command_switch(message): return
-    add_id = message.text
+    log(message,logger)
+    sender_id = args
+    wl_name = message.text
     new_msg = bot.send_message(
-        chat_id=USER_ID,
+        chat_id=sender_id,
         text="Product URL:",
         reply_markup=telebot.types.ReplyKeyboardRemove()
     )
-    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_2,args=(add_id))
+    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_2,args=(sender_id,wl_name))
 
-def addproduct_step_2(message:telebot.types.Message,args:str) -> None:
+def addproduct_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> None:
     if command_switch(message): return
-    url = str(message.text)
+    log(message,logger)
+    sender_id = args[0]
+    wl_name = args[1]
+    url = message.text
     if (not url.startswith("https://") or (not ("amazon" in url) and (not ("amzn" in url)))):
-        bot.send_message(chat_id=USER_ID,text=f"Invalid URL: {url}\nMake sure to paste an Amazon URL")
+        bot.send_message(chat_id=sender_id,text=f"Invalid URL: {url}\nMake sure to paste an Amazon URL")
         return
-    new_msg = bot.send_message(chat_id=USER_ID,text="Product name (optional, 64 characters max):")
-    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_3,args=(args,url))
+    new_msg = bot.send_message(chat_id=sender_id,text="Do you want to give the product a custom name? (64 characters max, \"no\" to use Amazon's name):")
+    bot.register_next_step_handler(message=new_msg,callback=addproduct_step_3,args=(sender_id,wl_name,url))
 
-def addproduct_step_3(message:telebot.types.Message,args:tuple) -> None:
+def addproduct_step_3(message:telebot.types.Message,args:Tuple[int,str,str]) -> None:
     if command_switch(message): return
-    name = message.text
-    if (len(name) > 64):
-        bot.send_message(chat_id=USER_ID,text="Invalid name: name longer than 64 characters")
+    log(message,logger)
+    sender_id = args[0]
+    wl_name = args[1]
+    url = args[2]
+    prod_name = message.text
+    if (len(prod_name) > 64):
+        bot.send_message(chat_id=sender_id,text="Invalid name: name longer than 64 characters!")
         return
-    if (name in ["No","no"]): name = None
-    db.database[args[0]].addProduct(args[1],name)
-    db.write(DATABASE_PATH)
-    final_msg = bot.send_message(chat_id=USER_ID, text=f"\"{name if name is not None else 'Product'}\" added to watchlist \"{args[0]}\"!")
+    if (prod_name in ["No","no"]): prod_name = None
+    tmp_msg = bot.send_message(
+        chat_id=sender_id,
+        text="Scraping Amazon's website..."
+    )
+    try:
+        added_name = db.addProduct(sender_id,wl_name,url,prod_name)
+    except UserNotAuthorizedException:
+        userNotAuthorizedException_message(sender_id)
+        return
+    except UserNotFoundError:
+        userNotFoundError_message(sender_id)
+        return
+    except WatchlistNotFoundException:
+        watchlistNotFoundException_message(sender_id,wl_name)
+        return
+    except:
+        unknownError_message(sender_id)
+        return
+    bot.delete_message(chat_id=sender_id,message_id=tmp_msg.id)
+    final_msg = bot.send_message(
+        chat_id=sender_id,
+        text=f"\"{added_name}\" added to watchlist \"{wl_name}\"!"
+    )
     log(final_msg,logger)
 
 
@@ -414,10 +540,21 @@ def addproduct_step_3(message:telebot.types.Message,args:tuple) -> None:
 @bot.message_handler(commands=['removeproduct'])
 def removeproduct(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
-    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
-    if (len(db.database.keys()) == 0):
-        bot.send_message(chat_id=USER_ID,text="You don't have any watchlists yet! Create one first using /addwatchlist")
+    sender_id = message.from_user.id
+    try:
+        wl_names = db.getWatchlists(sender_id)
+    except UserNotAuthorizedException:
+        userNotAuthorizedException_message(sender_id)
+        return
+    except UserNotFoundError:
+        userNotFoundError_message(sender_id)
+        return
+    except EmptyProfileException:
+        emptyProfileException_message(sender_id)
+        return
+    except:
+        unknownError_message(sender_id)
         return
     keyboard = telebot.types.ReplyKeyboardMarkup(
         row_width=1,
@@ -425,19 +562,35 @@ def removeproduct(message:telebot.types.Message) -> None:
         selective=True,
         resize_keyboard=True
     )
-    for id in db.database.keys(): keyboard.add(id)
+    for wl_name in wl_names: keyboard.add(wl_name)
     new_msg = bot.send_message(
-        chat_id=USER_ID,
-        text="Remove product from which watchlist?",
+        chat_id=sender_id,
+        text="From which watchlist do you want to remove a product?",
         reply_markup=keyboard
     )
-    bot.register_next_step_handler(message=new_msg,callback=removeproduct_step_1)
+    bot.register_next_step_handler(message=new_msg,callback=removeproduct_step_1,args=(sender_id))
 
-def removeproduct_step_1(message:telebot.types.Message) -> None:
+def removeproduct_step_1(message:telebot.types.Message,args:int) -> None:
     if command_switch(message): return
-    del_id = message.text
-    if (len(db.database[del_id].products) == 0):
-        bot.send_message(chat_id=USER_ID, text=f"Watchlist {del_id} is empty!")
+    log(message,logger)
+    sender_id = args
+    wl_name = message.text
+    try:
+        prod_names = db.getProducts(sender_id,wl_name)
+    except UserNotAuthorizedException:
+        userNotAuthorizedException_message(sender_id)
+        return
+    except UserNotFoundError:
+        userNotFoundError_message(sender_id)
+        return
+    except WatchlistNotFoundException:
+        watchlistNotFoundException_message(sender_id)
+        return
+    except EmptyWatchlistException:
+        emptyWatchlistException_message(sender_id,wl_name)
+        return
+    except:
+        unknownError_message(sender_id)
         return
     keyboard = telebot.types.ReplyKeyboardMarkup(
         row_width=1,
@@ -445,23 +598,39 @@ def removeproduct_step_1(message:telebot.types.Message) -> None:
         selective=True,
         resize_keyboard=True
     )
-    for prod in db.database[del_id].products:
-        keyboard.add(prod.name if prod.name is not None else prod.fullName)
+    for prod_name in prod_names: keyboard.add(prod_name)
     new_msg = bot.send_message(
-        chat_id=USER_ID,
-        text="Remove which product?",
+        chat_id=sender_id,
+        text="Which product do you want to remove?",
         reply_markup=keyboard
     )
-    bot.register_next_step_handler(message=new_msg,callback=removeproduct_step_2,args=(del_id))
+    bot.register_next_step_handler(message=new_msg,callback=removeproduct_step_2,args=(sender_id,wl_name))
 
-def removeproduct_step_2(message:telebot.types.Message,args:str) -> None:
+def removeproduct_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> None:
     if command_switch(message): return
-    name = message.text
-    db.database[args].removeProduct(name)
-    db.write(DATABASE_PATH)
+    log(message,logger)
+    sender_id = args[0]
+    wl_name = args[1]
+    prod_name = message.text
+    try:
+        db.removeProduct(sender_id,wl_name,prod_name)
+    except UserNotAuthorizedException:
+        userNotAuthorizedException_message(sender_id)
+    except UserNotFoundError:
+        userNotFoundError_message(sender_id)
+        return
+    except WatchlistNotFoundException:
+        watchlistNotFoundException_message(sender_id,wl_name)
+        return
+    except ProductNotFoundException:
+        productNotFoundException_message(sender_id,prod_name)
+        return
+    except:
+        unknownError_message(sender_id)
+        return
     final_msg = bot.send_message(
-        chat_id=USER_ID,
-        text=f"{name} removed from watchlist \"{args}\"!",
+        chat_id=sender_id,
+        text=f"{prod_name} removed from watchlist \"{wl_name}\"!",
         reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(final_msg,logger)
@@ -473,16 +642,23 @@ def removeproduct_step_2(message:telebot.types.Message,args:str) -> None:
 @bot.message_handler(commands=['listall'])
 def listall(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
-    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
-    if (len(db.database.keys()) == 0):
-        bot.send_message(
-            chat_id=USER_ID,
-            text="You don't have any watchlists yet! Create one first using /addwatchlist",
-            reply_markup=telebot.types.ReplyKeyboardRemove()
-        )
+    sender_id = message.from_user.id
+    try:
+        msg = db.toString(sender_id)
+    except UserNotAuthorizedException:
+        userNotAuthorizedException_message(sender_id)
         return
-    bot.send_message(chat_id=USER_ID,text=str(db),reply_markup=telebot.types.ReplyKeyboardRemove())
+    except UserNotFoundError:
+        userNotFoundError_message(sender_id)
+        return
+    except EmptyProfileException:
+        emptyProfileException_message(sender_id)
+        return
+    except:
+        unknownError_message(sender_id)
+        return
+    bot.send_message(chat_id=sender_id,text=msg,reply_markup=telebot.types.ReplyKeyboardRemove())
 
 
 
@@ -491,29 +667,61 @@ def listall(message:telebot.types.Message) -> None:
 @bot.message_handler(commands=['update'])
 def update(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
-    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
-    dailyUpdate(USER_ID)
+    sender_id = message.from_user.id
+    tmp_msg = bot.send_message(
+        chat_id=sender_id,
+        text="Scraping Amazon's website..."
+    )
+    try:
+        msg = db.updateWatchlists(sender_id)
+    except UserNotAuthorizedException:
+        userNotAuthorizedException_message(sender_id)
+        return
+    except UserNotFoundError:
+        userNotFoundError_message(sender_id)
+        return
+    except:
+        unknownError_message(sender_id)
+        return
+    bot.delete_message(chat_id=sender_id,message_id=tmp_msg.id)
+    sent = bot.send_message(chat_id=sender_id,text=(msg if msg != "" else "You have no updates"),reply_markup=telebot.types.ReplyKeyboardRemove())
+    log(sent,logger)
 
 
 
 #? AUTH
 
-@bot.message_handler(commands=['cmd'])
-def cmd(message:telebot.types.Message) -> None:
+@bot.message_handler(commands=['auth'])
+def auth(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
-    if (not checkUser(str(message.from_user.id))): return
     log(message,logger)
-    msg = (
-        "Command list of this bot:\n\n"
-        "/addwatchlist\n"
-        "/removewatchlist\n"
-        "/addproduct\n"
-        "/removeproduct\n"
-        "/listall\n"
-        "/update"
+    sender_id = message.from_user.id
+    if (sender_id == db.adminId):
+        bot.send_message(
+            chat_id=db.adminId,
+            text="Why are you asking for authorization, jaf?"
+        )
+        return
+    if (sender_id in db.authorizedUsers):
+        bot.send_message(
+            chat_id=sender_id,
+            text="You already are an authorized user, no need to ask again :)"
+        )
+        return
+    if (addPendingRequest(sender_id) == -1):
+        bot.send_message(
+            chat_id=sender_id,
+            text="You already have a pending authorization request that will get reviewed soon."
+        )
+        return
+    askAdminAuthUser(sender_id,message.from_user.first_name)
+    bot.send_message(
+        chat_id=sender_id,
+        text="An authorization request has been sent! You will be notified when the request gets reviewed.",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
-    bot.send_message(chat_id=USER_ID,text=msg,reply_markup=telebot.types.ReplyKeyboardRemove())
+    
 
 
 
@@ -542,9 +750,7 @@ if (__name__ == "__main__"):
         if (isValidTime(argv[1])):
             SCHEDULED_TIME = argv[1]
 
-    if (isfile(DATABASE_PATH)): db.read(DATABASE_PATH)
-
-    schedule.every().day.at(SCHEDULED_TIME).do(dailyUpdate,USER_ID)
+    schedule.every().day.at(SCHEDULED_TIME).do(dailyUpdate)
     dailyUpdateThread = threading.Thread(target=updateRoutine)
 
     print("Jaf's AWS (Amazon Web Scraper) Telegram bot started\n")
