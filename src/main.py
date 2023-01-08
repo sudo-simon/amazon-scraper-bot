@@ -96,6 +96,7 @@ def askAdminAuthUser(user_id:int, user_firstName:str) -> None:
 def adminAuthResponse_yes(query:telebot.types.CallbackQuery) -> None:
     if (query.from_user.id != db.adminId): return
     res,user_id = query.data.split(':')
+    user_id = int(user_id)
     if (res == "yes"):
         if (db.addUser(user_id) == -1):
             sent = bot.send_message(chat_id=db.adminId,text="User already in the database! Unexpected anomaly :(")
@@ -114,6 +115,7 @@ def adminAuthResponse_yes(query:telebot.types.CallbackQuery) -> None:
 def adminAuthResponse_no(query:telebot.types.CallbackQuery) -> None:
     if (query.from_user.id != db.adminId): return
     res,user_id = query.data.split(':')
+    user_id = int(user_id)
     if (res == "no"):
         sent = bot.send_message(chat_id=user_id,text="You have not been authorized to use this bot :(")
         log(sent,logger)
@@ -228,6 +230,11 @@ def userNotAuthorizedException_message(user_id:int) -> None:
         chat_id=user_id,
         text="Error: it seems like you are not an authorized user :(",
         reply_markup=telebot.types.ReplyKeyboardRemove()
+    )
+    print(f"DEBUGGONE: userNotAuthorizedException\nauthUsers = {str(db.authorizedUsers)}")
+    bot.send_message(
+        chat_id=user_id,
+        text=f"Ciao bb, se ti arriva questo messaggio me lo dici please?\nQuesta è la lista degli utenti autorizzati che ho in memoria: {str(db.authorizedUsers)}"
     )
     log(sent,logger)
 
@@ -360,11 +367,6 @@ def addwatchlist_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> No
         db.addWatchlist(sender_id,wl_name,targetPrice)
     except UserNotAuthorizedException:
         userNotAuthorizedException_message(sender_id)
-        print(f"DEBUGGONE: userNotAuthorizedException\nauthUsers = {str(db.authorizedUsers)}")
-        bot.send_message(
-            chat_id=sender_id,
-            text=f"Ciao bb, se ti arriva questo messaggio me lo dici please?\nQuesta è la lista degli utenti autorizzati che ho in memoria: {str(db.authorizedUsers)}"
-        )
         return
     except UserNotFoundError:
         userNotFoundError_message(sender_id)
@@ -733,8 +735,16 @@ def auth(message:telebot.types.Message) -> None:
 #? USERS (ADMIN COMMAND ONLY)
 @bot.message_handler(commands=['users'])
 def users(message:telebot.types.Message) -> None:
+    log(message,logger)
     if (message.from_user.id != db.adminId): return
-    
+    msg = "User list:\n"
+    for user_id in db.authorizedUsers:
+        msg += str(user_id)+'\n'
+    sent = bot.send_message(
+        chat_id=db.adminId,
+        text=msg
+    )
+    log(sent,logger)
 
 
 
