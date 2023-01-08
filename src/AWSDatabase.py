@@ -36,6 +36,10 @@ class EmptyWatchlistException(Exception):
     """Exception raised when the watchlist has no products
     """
     pass
+class BadAmazonProductException(Exception):
+    """Exception raised when an Amazon product's page is not fit to be scraped
+    """
+    pass
 
 
 
@@ -137,10 +141,12 @@ class AWSDatabase:
                     
                     pageContent = BeautifulSoup(r.content, 'html.parser')
 
-                    whole_price = pageContent.find("span",class_="a-price-whole")
-                    cent_price = pageContent.find("span",class_="a-price-fraction")
-                    price_str = f"{whole_price.text.replace(',','.')}{cent_price.text}"
-                    price = float(price_str)
+                    try:
+                        whole_price = pageContent.find("span",class_="a-price-whole")
+                        cent_price = pageContent.find("span",class_="a-price-fraction")
+                        price_str = f"{whole_price.text.replace(',','.')}{cent_price.text}"
+                        price = float(price_str)
+                    except: raise BadAmazonProductException
 
                     if (fullName is None): fullName = pageContent.find("span",id="productTitle").text.strip()
 
@@ -196,13 +202,13 @@ class AWSDatabase:
             ret = self.name+":\n"
             for prod in self.products:
                 ret += f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n"
-            ret += f"\nTotal: {self.total:.2f} €\n" + (f"Target: {self.targetPrice:.2f}\n" if self.targetPrice is not None else "")
+            ret += f"\nTotal: {self.total:.2f} €\n" + (f"Target: {self.targetPrice:.2f} €\n" if self.targetPrice is not None else "")
             return ret
         def __repr__(self) -> str:
             ret = self.name+":\n"
             for prod in self.products:
                 ret += f"\n{prod.name if prod.name is not None else prod.fullName}\n{prod.price} €\n{prod.url}\n"
-            ret += f"\nTotal: {self.total:.2f} €\n" + (f"Target: {self.targetPrice:.2f}\n" if self.targetPrice is not None else "")
+            ret += f"\nTotal: {self.total:.2f} €\n" + (f"Target: {self.targetPrice:.2f} €\n" if self.targetPrice is not None else "")
             return ret
 
         def toDict(self) -> dict:
@@ -234,7 +240,8 @@ class AWSDatabase:
 
         def addProduct(self, url:str, name:str=None) -> str:
             #if (self.findProduct(name) is not None): return -1
-            new_prod = self.Product(url,name)
+            try: new_prod = self.Product(url,name)
+            except: raise BadAmazonProductException
             self.total += new_prod.price
             self.products.append(new_prod)
             self.products.sort(key=lambda p: p.name if p.name is not None else p.fullName)
@@ -508,7 +515,7 @@ class AWSDatabase:
 
         Raises
         -----
-        UserNotAuthorizedException, UserNotFoundError, WatchlistNotFoundException
+        UserNotAuthorizedException, UserNotFoundError, WatchlistNotFoundException, BadAmazonProductException
         """
 
         if ((user_id not in self.authorizedUsers) and (user_id != self.adminId)): raise UserNotAuthorizedException
@@ -517,7 +524,8 @@ class AWSDatabase:
         wl_dict = user_dict.get(wl_name,None)
         if (wl_dict is None): raise WatchlistNotFoundException
         wl = self.Watchlist(wl_name,d=wl_dict)
-        ret_name = wl.addProduct(url,prod_name)
+        try: ret_name = wl.addProduct(url,prod_name)
+        except BadAmazonProductException: raise BadAmazonProductException
         self.database[user_id][wl_name] = wl.toDict()
         self.saveDb()
         return ret_name
