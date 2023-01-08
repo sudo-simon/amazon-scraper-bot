@@ -346,7 +346,6 @@ def addwatchlist_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> No
     if command_switch(message): return
     log(message,logger)
     sender_id = args[0]
-    print(f"DEBUGGONE: sender_id = {sender_id}")
     wl_name = args[1]
     targetPrice = message.text
     if (targetPrice in ["No","no"]):

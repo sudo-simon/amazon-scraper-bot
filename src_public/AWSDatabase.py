@@ -95,7 +95,6 @@ class AWSDatabase:
             price:float
 
             def __init__(self, url:str, name:str=None, d:dict=None) -> None:
-                print(f"DEBUGGONE: init di Product")
                 self.url = None
                 self.name = None
                 self.fullName = None
@@ -127,7 +126,6 @@ class AWSDatabase:
 
 
             def webScrape(self, max_retries:int=20) -> None:
-                print(f"DEBUGGONE: webScrape!\nself.url = {self.url}")
                 fullName = None
                 price = None
                 
@@ -146,7 +144,6 @@ class AWSDatabase:
 
                     if (fullName is None): fullName = pageContent.find("span",id="productTitle").text.strip()
 
-                print(f"DEBUGGONE: webScrape for loop exited\nfullName = {fullName}\nprice = {price}")
                 if (self.fullName is None): self.fullName = fullName
                 self.lastPrice = self.price
                 self.price = price
@@ -193,7 +190,6 @@ class AWSDatabase:
             self.lastTotal = None
             self.total = 0.0
             if (d is not None):
-                print(f"DEBUGGONE: init di Watchlist\nname = {name}\nd = {str(d)}")
                 self.fromDict(d)
 
         def __str__(self) -> str:
@@ -222,17 +218,14 @@ class AWSDatabase:
             return out_d
 
         def fromDict(self, d:dict) -> None:
-            print(f"DEBUGGONE: Watchlist.fromDict()\nd = {str(d)}")
             #self.name = d['name']
             self.targetPrice = d['targetPrice']
-            print(f"DEBUGGONE: values set\nself = {str(self)}")
             self.lastTotal = d['lastTotal']
             self.total = d['total']
             for prod_d in d['products']:
                 new_prod = self.Product("fakeurl",d=prod_d)
                 self.products.append(new_prod)
             self.products.sort(key=lambda p: p.name if p.name is not None else p.fullName)
-            print(f"DEBUGGONE: wl after fromDict:\n{str(self)}")
 
         
         def editTargetPrice(self, targetPrice:Union[float,None]) -> None:
@@ -241,9 +234,7 @@ class AWSDatabase:
 
         def addProduct(self, url:str, name:str=None) -> str:
             #if (self.findProduct(name) is not None): return -1
-            print(f"DEBUGGONE: wl.addProduct accessed!")
             new_prod = self.Product(url,name)
-            print(f"DEBUGGONE: wl.addProduct ->\nnew_prod = {str(new_prod)}")
             self.total += new_prod.price
             self.products.append(new_prod)
             self.products.sort(key=lambda p: p.name if p.name is not None else p.fullName)
@@ -285,7 +276,6 @@ class AWSDatabase:
 
 
         def updatePrices(self) -> bool:
-            print(f"DEBUGGONE: wl.updatePrices!\nlen(products) = {len(self.products)}")
             if (len(self.products) == 0): return False
             diff = 0.0
             for i in range(len(self.products)):
@@ -323,7 +313,6 @@ class AWSDatabase:
         self.database = {}
         self.loadDb()
         if (self.adminId not in self.database.keys()):
-            print(f"DEBUGGONE: {self.adminId} not in database keys")
             self.database[self.adminId] = dict()
             self.saveDb()
 
@@ -528,9 +517,7 @@ class AWSDatabase:
         wl_dict = user_dict.get(wl_name,None)
         if (wl_dict is None): raise WatchlistNotFoundException
         wl = self.Watchlist(wl_name,d=wl_dict)
-        print(f"DEBUGGONE: db.addProduct ->\nwl = {str(wl)}")
         ret_name = wl.addProduct(url,prod_name)
-        print(f"DEBUGGONE: wl.addProduct -> DONE!")
         self.database[user_id][wl_name] = wl.toDict()
         self.saveDb()
         return ret_name
@@ -597,7 +584,6 @@ class AWSDatabase:
         if (user_dict is None): raise UserNotFoundError
         ret = "Some of your watchlists have been updated!\n\n"
         for wl_name in user_dict.keys():
-            print(f"DEBUGGONE: for loop di updateWatchlists\nwl_name = {wl_name}\nuser_dict[{wl_name}] = {str(user_dict[wl_name])}")
             wl = self.Watchlist(wl_name,d=user_dict[wl_name])
             if (wl.updatePrices()):
                 ret += str(wl) + "\n ~~~~~ \n"
@@ -632,7 +618,6 @@ class AWSDatabase:
         if (user_dict is None): raise UserNotFoundError
         ret = ""
         for wl_name,wl_dict in user_dict.items():
-            print(f"DEBUGGONE: sei nel for toString\nwl_name = {wl_name}\nwl_dict = {str(wl_dict)}")
             wl = self.Watchlist(wl_name,d=wl_dict)
             ret += str(wl) + "\n ~~~~~ \n"
         if (ret == ""): raise EmptyProfileException
@@ -647,7 +632,6 @@ class AWSDatabase:
             tmp_d = load(r_file)
         self.database = {int(k):v for k,v in tmp_d.items()}
         self.authorizedUsers = self.readAuthUsers()
-        print(f"DEBUGGONE: loadDb -> db keys = {str(self.database.keys())}")
         
 
     def saveDb(self) -> None:
