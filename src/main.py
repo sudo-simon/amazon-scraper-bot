@@ -1,4 +1,4 @@
-from AWSDatabase import AWSDatabase, UserNotAuthorizedException, UserNotFoundError, WatchlistNotFoundException, WatchlistDuplicateException, ProductNotFoundException, EmptyProfileException, EmptyWatchlistException
+from AWSDatabase import AWSDatabase, UserNotAuthorizedException, UserNotFoundError, WatchlistNotFoundException, WatchlistDuplicateException, ProductNotFoundException, EmptyProfileException, EmptyWatchlistException, BadAmazonProductException
 import logging
 from dotenv import load_dotenv
 from sys import argv
@@ -294,6 +294,14 @@ def unknownError_message(user_id:int) -> None:
     )
     log(sent,logger)
 
+def badAmazonProductException_message(user_id:int, prod_name:str) -> None:
+    sent = bot.send_message(
+        chat_id=user_id,
+        text=f"\"{prod_name}\" Amazon product is not fit for web scraping, sorry :(",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
+    )
+    log(sent,logger)
+
 
 
 ##?## ------------------------------ BOT ROUTES ------------------------------ ##?##
@@ -529,6 +537,9 @@ def addproduct_step_3(message:telebot.types.Message,args:Tuple[int,str,str]) -> 
         return
     except WatchlistNotFoundException:
         watchlistNotFoundException_message(sender_id,wl_name)
+        return
+    except BadAmazonProductException:
+        badAmazonProductException_message(sender_id,(prod_name if prod_name not in ["No","no"] else ""))
         return
     except:
         unknownError_message(sender_id)
