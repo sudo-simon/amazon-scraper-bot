@@ -19,10 +19,12 @@ from typing import Tuple,List
 load_dotenv()
 RESOURCES_PATH = "./resources/"
 SCHEDULED_TIME = "13:00"
-#UPDATING = False
 
-bot = telebot.TeleBot(getenv("TOKEN"))
-db = AWSDatabase(int(getenv("ADMIN_ID")),RESOURCES_PATH)
+bot:telebot.TeleBot
+db:AWSDatabase
+if (isfile(".env")):
+    bot = telebot.TeleBot(getenv("TOKEN"))
+    db = AWSDatabase(int(getenv("ADMIN_ID")),RESOURCES_PATH)
 
 
 
