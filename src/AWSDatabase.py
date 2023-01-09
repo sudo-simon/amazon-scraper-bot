@@ -1,7 +1,7 @@
 from json import load,dump
 import csv
 from os.path import join,isfile
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Tuple
 import requests
 from bs4 import BeautifulSoup
 
@@ -329,12 +329,14 @@ class AWSDatabase:
             new_json.write("{"+"}")
     def createCsvFile(self) -> None:
         with open(self.csvPath,'x',encoding='utf-8') as new_csv:
-            new_csv.write("user_id,role\n")
+            new_csv.write("user_id,user_firstName,role\n")
     def createTxtFile(self) -> None:
         with open(self.txtPath,'x',encoding='utf-8') as new_txt:
             new_txt.write("")
 
-    def readAuthUsers(self) -> List[int]:
+
+
+    def readAuthUsersIds(self) -> List[int]:
         auth_users = []
         with open(self.csvPath,"r",encoding='utf-8') as csv_file:
             csv_reader = csv.reader(csv_file,delimiter=',')
@@ -344,18 +346,46 @@ class AWSDatabase:
                     first_line = False
                     continue
                 user_id = int(row[0])
-                role = row[1]
+                role = row[2]
                 if (role == "User"): auth_users.append(user_id)
         return auth_users
 
-    def addAuthUser(self,user_id:int) -> None:
+    
+
+    def getAuthUsers(self) -> List[Tuple[int,str,str]]:
+        ret = []
+        with open(self.csvPath,"r",encoding='utf-8') as csv_file:
+            csv_reader = csv.reader(csv_file,delimiter=',')
+            first_line = True
+            for row in csv_reader:
+                if (first_line):
+                    first_line = False
+                    continue
+                ret.append((int(row[0]),row[1],row[2]))
+        return ret
+
+
+
+    def addAuthUser(self,user_id:int, user_firstName:str) -> None:
         with open(self.csvPath,"a",encoding='utf-8') as csv_file:
-            csv_file.write(f"{user_id},User\n")
+            csv_file.write(f"{user_id},{user_firstName},User\n")
         self.authorizedUsers.append(user_id)
 
+    def removeAuthUser(self, user_id:int) -> None:
+        authUsers = self.getAuthUsers()
+        i = 0
+        for authUser_id,user_firstName,role in authUsers:
+            if (authUser_id == user_id): break
+            i += 1
+        if (i < len(authUsers)): authUsers.pop(i)
+        with open(self.csvPath,"w",encoding='utf-8') as csv_file:
+            csv_file.write("user_id,user_firstName,role\n")
+            for authUser_id,user_firstName,role in authUsers:
+                csv_file.write(f"{authUser_id},{user_firstName},{role}\n")
+        self.authorizedUsers.remove(user_id)
 
 
-    def addUser(self, user_id:int) -> int:
+    def addUser(self, user_id:int, user_firstName:str) -> int:
         """Adds a new authorized user to both the authorized list and the database
 
         Parameters
@@ -369,11 +399,17 @@ class AWSDatabase:
         """
 
         if (user_id in self.database.keys()): return -1
-        self.addAuthUser(user_id)
+        self.addAuthUser(user_id,user_firstName)
         self.database[user_id] = dict()
         self.saveDb()
         return 0
         
+    def banUser(self, user_id:int) -> int:
+        if (user_id not in self.database.keys()): return -1
+        self.removeAuthUser(user_id)
+        self.database.pop(user_id)
+        self.saveDb()
+        return 0
             
     
     def getUser(self, user_id:int) -> Dict[str,dict]:
@@ -639,7 +675,7 @@ class AWSDatabase:
         with open(self.jsonPath,"r",encoding='utf-8') as r_file:
             tmp_d = load(r_file)
         self.database = {int(k):v for k,v in tmp_d.items()}
-        self.authorizedUsers = self.readAuthUsers()
+        self.authorizedUsers = self.readAuthUsersIds()
         
 
     def saveDb(self) -> None:

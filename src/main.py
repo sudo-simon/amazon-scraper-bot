@@ -81,8 +81,8 @@ def removePendingRequest(user_id:int) -> int:
 
 def askAdminAuthUser(user_id:int, user_firstName:str) -> None:
     keyboard = telebot.util.quick_markup({
-        "Yes": {"callback_data":f"yes:{user_id}"},
-        "No": {"callback_data":f"no:{user_id}"}
+        "Yes": {"callback_data":f"y:{user_id}:{user_firstName}"},
+        "No": {"callback_data":f"n:{user_id}:{user_firstName}"}
     }, row_width=2
     )
     bot.send_message(
@@ -92,13 +92,13 @@ def askAdminAuthUser(user_id:int, user_firstName:str) -> None:
     )
     
 
-@bot.callback_query_handler(func=(lambda query: query.data[:4] == "yes:"))
+@bot.callback_query_handler(func=(lambda query: query.data[:2] == "y:"))
 def adminAuthResponse_yes(query:telebot.types.CallbackQuery) -> None:
     if (query.from_user.id != db.adminId): return
-    res,user_id = query.data.split(':')
+    res,user_id,user_firstName = query.data.split(':')
     user_id = int(user_id)
     if (res == "yes"):
-        if (db.addUser(user_id) == -1):
+        if (db.addUser(user_id,user_firstName) == -1):
             sent = bot.send_message(chat_id=db.adminId,text="User already in the database! Unexpected anomaly :(")
             log(sent,logger)
             return
@@ -106,22 +106,22 @@ def adminAuthResponse_yes(query:telebot.types.CallbackQuery) -> None:
         log(sent,logger)
         removePendingRequest(user_id)
         bot.delete_message(chat_id=db.adminId,message_id=query.message.id)
-        bot.send_message(chat_id=db.adminId,text="User authorized!",reply_markup=telebot.types.ReplyKeyboardRemove())
+        bot.send_message(chat_id=db.adminId,text=f"User {user_firstName} authorized!",reply_markup=telebot.types.ReplyKeyboardRemove())
     else:
         sent = bot.send_message(chat_id=db.adminId,text="Unexpected callback query behaviour!")
         log(sent,logger)
 
-@bot.callback_query_handler(func=(lambda query: query.data[:3] == "no:"))
+@bot.callback_query_handler(func=(lambda query: query.data[:2] == "n:"))
 def adminAuthResponse_no(query:telebot.types.CallbackQuery) -> None:
     if (query.from_user.id != db.adminId): return
-    res,user_id = query.data.split(':')
+    res,user_id,user_firstName = query.data.split(':')
     user_id = int(user_id)
     if (res == "no"):
         sent = bot.send_message(chat_id=user_id,text="You have not been authorized to use this bot :(")
         log(sent,logger)
         removePendingRequest(user_id)
         bot.delete_message(chat_id=db.adminId,message_id=query.message.id)
-        bot.send_message(chat_id=db.adminId,text="User not authorized!",reply_markup=telebot.types.ReplyKeyboardRemove())
+        bot.send_message(chat_id=db.adminId,text=f"User {user_firstName} not authorized!",reply_markup=telebot.types.ReplyKeyboardRemove())
     else:
         sent = bot.send_message(chat_id=db.adminId,text="Unexpected callback query behaviour!")
         log(sent,logger)
@@ -159,7 +159,12 @@ def dailyUpdate() -> None:
             unknownError_message(user_id)
             return
         bot.delete_message(chat_id=user_id,message_id=tmp_msg.id)
-        sent = bot.send_message(chat_id=user_id,text=(msg if msg != "" else "You have no updates"),reply_markup=telebot.types.ReplyKeyboardRemove())
+        sent = bot.send_message(
+            chat_id=user_id,
+            text=(msg if msg != "" else "You have no updates"),
+            reply_markup=telebot.types.ReplyKeyboardRemove(),
+            disable_web_page_preview=True
+        )
         log(sent,logger)
 
     tmp_msg = bot.send_message(chat_id=db.adminId,text=f"Automatic daily update running...")
@@ -175,7 +180,12 @@ def dailyUpdate() -> None:
         unknownError_message(db.adminId)
         return
     bot.delete_message(chat_id=db.adminId,message_id=tmp_msg.id)
-    sent = bot.send_message(chat_id=db.adminId,text=(msg if msg != "" else "You have no updates"),reply_markup=telebot.types.ReplyKeyboardRemove())
+    sent = bot.send_message(
+        chat_id=db.adminId,
+        text=(msg if msg != "" else "You have no updates"),
+        reply_markup=telebot.types.ReplyKeyboardRemove(),
+        disable_web_page_preview=True
+    )
     log(sent,logger)
 
 
@@ -676,7 +686,12 @@ def listall(message:telebot.types.Message) -> None:
     except:
         unknownError_message(sender_id)
         return
-    bot.send_message(chat_id=sender_id,text=msg,reply_markup=telebot.types.ReplyKeyboardRemove())
+    bot.send_message(
+        chat_id=sender_id,
+        text=msg,
+        reply_markup=telebot.types.ReplyKeyboardRemove(),
+        disable_web_page_preview=True
+    )
 
 
 
@@ -689,7 +704,7 @@ def update(message:telebot.types.Message) -> None:
     sender_id = message.from_user.id
     tmp_msg = bot.send_message(
         chat_id=sender_id,
-        text="Scraping Amazon's website..."
+        text="Scraping Amazon's website... (it could take a while)"
     )
     try:
         msg = db.updateWatchlists(sender_id)
@@ -703,7 +718,12 @@ def update(message:telebot.types.Message) -> None:
         unknownError_message(sender_id)
         return
     bot.delete_message(chat_id=sender_id,message_id=tmp_msg.id)
-    sent = bot.send_message(chat_id=sender_id,text=(msg if msg != "" else "You have no updates"),reply_markup=telebot.types.ReplyKeyboardRemove())
+    sent = bot.send_message(
+        chat_id=sender_id,
+        text=(msg if msg != "" else "You have no updates"),
+        reply_markup=telebot.types.ReplyKeyboardRemove(),
+        disable_web_page_preview=True
+    )
     log(sent,logger)
 
 
@@ -743,19 +763,63 @@ def auth(message:telebot.types.Message) -> None:
 
 
 
+
+##?## ----- ADMIN TOOLS ----- ##?##
+
 #? USERS (ADMIN COMMAND ONLY)
 @bot.message_handler(commands=['users'])
 def users(message:telebot.types.Message) -> None:
+    if (message.from_user.is_bot): return
     log(message,logger)
     if (message.from_user.id != db.adminId): return
-    msg = "User list:\n"
-    for user_id in db.authorizedUsers:
-        msg += str(user_id)+'\n'
+    msg = "List of users:\n"
+    for user_id,user_firstName,user_role in db.getAuthUsers():
+        msg += f"{user_id}, {user_firstName}, {user_role}\n"
     sent = bot.send_message(
         chat_id=db.adminId,
         text=msg
     )
     log(sent,logger)
+
+
+#? BAN (ADMIN COMMAND ONLY)
+@bot.message_handler(commands=['ban'])
+def ban(message:telebot.types.Message) -> None:
+    if (message.from_user.is_bot): return
+    log(message,logger)
+    if (message.from_user.id != db.adminId): return
+    keyboard = telebot.types.ReplyKeyboardMarkup(
+        row_width=1,
+        one_time_keyboard=True,
+        selective=True,
+        resize_keyboard=True
+    )
+    for user_id,user_firstName,role in db.getAuthUsers():
+        keyboard.add(f"{user_firstName}, {user_id}")
+    new_msg = bot.send_message(
+        chat_id=db.adminId,
+        text="Which user do you want to ban?",
+        reply_markup=keyboard
+    )
+    bot.register_next_step_handler(message=new_msg,callback=ban_step_2)
+
+def ban_step_2(message:telebot.types.Message) -> None:
+    if command_switch(message): return
+    log(message,logger)
+    try:
+        user_firstName, user_id = message.text.split(', ')
+        user_id = int(user_id)
+    except: return
+    if (db.banUser(user_id) == -1):
+        sent = bot.send_message(chat_id=db.adminId,text=f"Unable to ban user {user_firstName} Unexpected anomaly :(")
+        log(sent,logger)
+        return
+    final_msg = bot.send_message(
+        chat_id=db.adminId,
+        text=f"User {user_firstName} banned!",
+        reply_markup=telebot.types.ReplyKeyboardRemove()
+    )
+    log(final_msg,logger)
 
 
 
