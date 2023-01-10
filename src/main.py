@@ -20,10 +20,10 @@ load_dotenv()
 RESOURCES_PATH = "./resources/"
 SCHEDULED_TIME = "13:00"
 
-bot:telebot.TeleBot
+bot:telebot.TeleBot = telebot.TeleBot("faketoken")
 db:AWSDatabase
 if (isfile(".env")):
-    bot = telebot.TeleBot(getenv("TOKEN"))
+    bot = telebot.TeleBot(getenv("TOKEN"),disable_web_page_preview=True)
     db = AWSDatabase(int(getenv("ADMIN_ID")),RESOURCES_PATH)
 
 
@@ -164,8 +164,7 @@ def dailyUpdate() -> None:
         sent = bot.send_message(
             chat_id=user_id,
             text=(msg if msg != "" else "You have no updates"),
-            reply_markup=telebot.types.ReplyKeyboardRemove(),
-            disable_web_page_preview=True
+            reply_markup=telebot.types.ReplyKeyboardRemove()
         )
         log(sent,logger)
 
@@ -185,8 +184,7 @@ def dailyUpdate() -> None:
     sent = bot.send_message(
         chat_id=db.adminId,
         text=(msg if msg != "" else "You have no updates"),
-        reply_markup=telebot.types.ReplyKeyboardRemove(),
-        disable_web_page_preview=True
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
@@ -204,6 +202,18 @@ def isValidTime(t:str) -> bool:
         (t.replace(':','',1).isdecimal()) and
         (int(t[:2]) <= 23) and
         (int(t[3:]) <= 59)
+    )
+
+def isValidUrl(url:str) -> bool:
+    return (
+        url.startswith("https://") and
+        (("amazon" in url) or ("amzn" in url))
+    )
+
+def isAuthorizedUser(user_id:int) -> bool:
+    return (
+        (user_id in db.authorizedUsers) or
+        (user_id == db.adminId)
     )
 
 
@@ -242,11 +252,6 @@ def userNotAuthorizedException_message(user_id:int) -> None:
         chat_id=user_id,
         text="Error: it seems like you are not an authorized user :(",
         reply_markup=telebot.types.ReplyKeyboardRemove()
-    )
-    print(f"DEBUGGONE: userNotAuthorizedException\nauthUsers = {str(db.authorizedUsers)}")
-    bot.send_message(
-        chat_id=user_id,
-        text=f"Ciao bb, se ti arriva questo messaggio me lo dici please?\nQuesta è la lista degli utenti autorizzati che ho in memoria: {str(db.authorizedUsers)}"
     )
     log(sent,logger)
 
@@ -301,7 +306,7 @@ def emptyWatchlistException_message(user_id:int, wl_name:str) -> None:
 def unknownError_message(user_id:int) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text="Unknown error: something went wrong!",
+        text="Error: something went wrong!",
         reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
@@ -352,6 +357,9 @@ def addwatchlist(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
     log(message,logger)
     sender_id = message.from_user.id
+    if (not isAuthorizedUser(sender_id)):
+        userNotAuthorizedException_message(sender_id)
+        return
     new_msg = bot.send_message(
         chat_id=sender_id,
         text="Name of the watchlist to be created? (64 characters max, unique)",
@@ -364,8 +372,11 @@ def addwatchlist_step_1(message:telebot.types.Message,args:int) -> None:
     log(message,logger)
     sender_id = args
     wl_name = message.text
+    #if (wl_name in db.getWatchlists(sender_id)):
+    #    watchlistDuplicateException_message(sender_id,wl_name)
+    #    return
     if (len(wl_name) > 64):
-        bot.send_message(chat_id=sender_id,text="Invalid name: it is longer than 64 characters")
+        bot.send_message(chat_id=sender_id,text="Invalid name: it's longer than 64 characters")
         return
     new_msg = bot.send_message(chat_id=sender_id,text="Do you want to set a target price for this watchlist? (Number if yes, \"no\" otherwise)")
     bot.register_next_step_handler(message=new_msg,callback=addwatchlist_step_2,args=(sender_id,wl_name))
@@ -409,6 +420,9 @@ def removewatchlist(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
     log(message,logger)
     sender_id = message.from_user.id
+    if (not isAuthorizedUser(sender_id)):
+        userNotAuthorizedException_message(sender_id)
+        return
     try:
         wl_names = db.getWatchlists(sender_id)
     except UserNotAuthorizedException:
@@ -472,6 +486,9 @@ def addproduct(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
     log(message,logger)
     sender_id = message.from_user.id
+    if (not isAuthorizedUser(sender_id)):
+        userNotAuthorizedException_message(sender_id)
+        return
     try:
         wl_names = db.getWatchlists(sender_id)
     except UserNotAuthorizedException:
@@ -518,8 +535,9 @@ def addproduct_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> None
     sender_id = args[0]
     wl_name = args[1]
     url = message.text
-    if (not url.startswith("https://") or (not ("amazon" in url) and (not ("amzn" in url)))):
-        bot.send_message(chat_id=sender_id,text=f"Invalid URL: {url}\nMake sure to paste an Amazon URL")
+    if (not isValidUrl(url)):
+        new_msg = bot.send_message(chat_id=sender_id,text=f"Invalid URL! ({url})\nMake sure to paste an Amazon URL. Try again:")
+        bot.register_next_step_handler(message=new_msg,callback=addproduct_step_2,args=(sender_id,wl_name))
         return
     new_msg = bot.send_message(chat_id=sender_id,text="Do you want to give the product a custom name? (64 characters max, \"no\" to use Amazon's name):")
     bot.register_next_step_handler(message=new_msg,callback=addproduct_step_3,args=(sender_id,wl_name,url))
@@ -572,6 +590,9 @@ def removeproduct(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
     log(message,logger)
     sender_id = message.from_user.id
+    if (not isAuthorizedUser(sender_id)):
+        userNotAuthorizedException_message(sender_id)
+        return
     try:
         wl_names = db.getWatchlists(sender_id)
     except UserNotAuthorizedException:
@@ -674,6 +695,9 @@ def listall(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
     log(message,logger)
     sender_id = message.from_user.id
+    if (not isAuthorizedUser(sender_id)):
+        userNotAuthorizedException_message(sender_id)
+        return
     try:
         msg = db.toString(sender_id)
     except UserNotAuthorizedException:
@@ -691,8 +715,7 @@ def listall(message:telebot.types.Message) -> None:
     bot.send_message(
         chat_id=sender_id,
         text=msg,
-        reply_markup=telebot.types.ReplyKeyboardRemove(),
-        disable_web_page_preview=True
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
 
 
@@ -704,6 +727,9 @@ def update(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
     log(message,logger)
     sender_id = message.from_user.id
+    if (not isAuthorizedUser(sender_id)):
+        userNotAuthorizedException_message(sender_id)
+        return
     tmp_msg = bot.send_message(
         chat_id=sender_id,
         text="Scraping Amazon's website... (it could take a while)"
@@ -723,8 +749,7 @@ def update(message:telebot.types.Message) -> None:
     sent = bot.send_message(
         chat_id=sender_id,
         text=(msg if msg != "" else "You have no updates"),
-        reply_markup=telebot.types.ReplyKeyboardRemove(),
-        disable_web_page_preview=True
+        reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
 
@@ -743,7 +768,7 @@ def auth(message:telebot.types.Message) -> None:
             text="Why are you asking for authorization, jaf?"
         )
         return
-    if (sender_id in db.authorizedUsers):
+    if (isAuthorizedUser(sender_id)):
         bot.send_message(
             chat_id=sender_id,
             text="You already are an authorized user, no need to ask again :)"
