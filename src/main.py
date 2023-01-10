@@ -522,6 +522,9 @@ def addproduct_step_1(message:telebot.types.Message,args:int) -> None:
     log(message,logger)
     sender_id = args
     wl_name = message.text
+    if (wl_name not in db.getWatchlists(sender_id)):
+        watchlistNotFoundException_message(sender_id,wl_name)
+        return
     new_msg = bot.send_message(
         chat_id=sender_id,
         text="Product URL:",
