@@ -304,19 +304,24 @@ class AWSDatabase:
     jsonPath:str
     csvPath:str
     txtPath:str
+    banPath:str
     adminId:int
     authorizedUsers:List[int]
+    bannedUsers:List[int]
     database:Dict[int,Dict[str,dict]]
 
     def __init__(self, adminId:int, resourcesPath:str) -> None:
         self.jsonPath = join(resourcesPath,"database.json")
         self.csvPath = join(resourcesPath,"authorized_users.csv")
         self.txtPath = join(resourcesPath,"pending_users.txt")
+        self.banPath = join(resourcesPath,"banned_users.txt")
         if (not isfile(self.jsonPath)): self.createJsonFile()
         if (not isfile(self.csvPath)): self.createCsvFile()
         if (not isfile(self.txtPath)): self.createTxtFile()
+        if (not isfile(self.banPath)): self.createBanFile()
         self.adminId = adminId
         self.authorizedUsers = []
+        self.bannedUsers = []
         self.database = {}
         self.loadDb()
         if (self.adminId not in self.database.keys()):
@@ -333,6 +338,9 @@ class AWSDatabase:
     def createTxtFile(self) -> None:
         with open(self.txtPath,'x',encoding='utf-8') as new_txt:
             new_txt.write("")
+    def createBanFile(self) -> None:
+        with open(self.banPath,'x',encoding='utf-8') as ban_file:
+            ban_file.write("")
 
 
 
@@ -349,6 +357,12 @@ class AWSDatabase:
                 role = row[2]
                 if (role == "User"): auth_users.append(user_id)
         return auth_users
+
+    def readBannedUsersIds(self) -> List[int]:
+        banned_users = []
+        with open(self.banPath,"r",encoding='utf-8') as ban_file:
+            banned_users = [int(user.strip()) for user in ban_file.readlines()]
+        return banned_users
 
     
 
@@ -377,12 +391,14 @@ class AWSDatabase:
         for authUser_id,user_firstName,role in authUsers:
             if (authUser_id == user_id): break
             i += 1
-        if (i < len(authUsers)): authUsers.pop(i)
-        with open(self.csvPath,"w",encoding='utf-8') as csv_file:
-            csv_file.write("user_id,user_firstName,role\n")
-            for authUser_id,user_firstName,role in authUsers:
-                csv_file.write(f"{authUser_id},{user_firstName},{role}\n")
-        self.authorizedUsers.remove(user_id)
+        if (i < len(authUsers)):
+            authUsers.pop(i)
+            with open(self.csvPath,"w",encoding='utf-8') as csv_file:
+                csv_file.write("user_id,user_firstName,role\n")
+                for authUser_id,user_firstName,role in authUsers:
+                    csv_file.write(f"{authUser_id},{user_firstName},{role}\n")
+        try: self.authorizedUsers.remove(user_id)
+        except ValueError as vErr: pass
 
 
     def addUser(self, user_id:int, user_firstName:str) -> int:
@@ -405,9 +421,13 @@ class AWSDatabase:
         return 0
         
     def banUser(self, user_id:int) -> int:
-        if (user_id not in self.database.keys()): return -1
+        if (user_id in self.bannedUsers): return -1
         self.removeAuthUser(user_id)
-        self.database.pop(user_id)
+        try: self.database.pop(user_id)
+        except KeyError as kErr: pass
+        self.bannedUsers.append(user_id)
+        with open(self.banPath,"w",encoding='utf-8') as ban_file:
+            for u_id in self.bannedUsers: ban_file.write(str(u_id)+'\n')
         self.saveDb()
         return 0
             
@@ -676,6 +696,7 @@ class AWSDatabase:
             tmp_d = load(r_file)
         self.database = {int(k):v for k,v in tmp_d.items()}
         self.authorizedUsers = self.readAuthUsersIds()
+        self.bannedUsers = self.readBannedUsersIds()
         
 
     def saveDb(self) -> None:

@@ -62,7 +62,7 @@ def addPendingRequest(user_id:int) -> int:
     with open(db.txtPath,"r+",encoding='utf-8') as pending_txt:
         pending = [int(line.strip()) for line in pending_txt.readlines()]
         if (user_id in pending): userExists = True
-        else: pending_txt.writelines([str(user_id)])
+        else: pending_txt.write(str(user_id)+'\n')
     if (userExists): return -1
     return 0
 
@@ -75,7 +75,7 @@ def removePendingRequest(user_id:int) -> int:
         else: pending.remove(user_id)
     if(not userExists): return -1
     with open(db.txtPath,"w",encoding='utf-8') as pending_txt:
-        pending_txt.writelines([str(pending_id) for pending_id in pending])
+        for pending_id in pending: pending_txt.write(str(pending_id)+'\n')
     return 0
 
 
@@ -250,7 +250,7 @@ def command_switch(message:telebot.types.Message) -> bool:
 def userNotAuthorizedException_message(user_id:int) -> None:
     sent = bot.send_message(
         chat_id=user_id,
-        text="Error: it seems like you are not an authorized user :(",
+        text="Error: it seems like you are not an authorized user :(\nTry asking for authorization with /auth",
         reply_markup=telebot.types.ReplyKeyboardRemove()
     )
     log(sent,logger)
@@ -330,6 +330,7 @@ def badAmazonProductException_message(user_id:int, prod_name:str) -> None:
 @bot.message_handler(commands=['start'])
 def start(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    if (message.from_user.id in db.bannedUsers): return
     log(message,logger)
     sender_id = message.from_user.id
     if (sender_id == db.adminId):
@@ -355,6 +356,7 @@ def start(message:telebot.types.Message) -> None:
 @bot.message_handler(commands=['addwatchlist'])
 def addwatchlist(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    if (message.from_user.id in db.bannedUsers): return
     log(message,logger)
     sender_id = message.from_user.id
     if (not isAuthorizedUser(sender_id)):
@@ -418,6 +420,7 @@ def addwatchlist_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> No
 @bot.message_handler(commands=['removewatchlist'])
 def removewatchlist(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    if (message.from_user.id in db.bannedUsers): return
     log(message,logger)
     sender_id = message.from_user.id
     if (not isAuthorizedUser(sender_id)):
@@ -484,6 +487,7 @@ def removewatchlist_step_1(message:telebot.types.Message,args:int) -> None:
 @bot.message_handler(commands=['addproduct'])
 def addproduct(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    if (message.from_user.id in db.bannedUsers): return
     log(message,logger)
     sender_id = message.from_user.id
     if (not isAuthorizedUser(sender_id)):
@@ -591,6 +595,7 @@ def addproduct_step_3(message:telebot.types.Message,args:Tuple[int,str,str]) -> 
 @bot.message_handler(commands=['removeproduct'])
 def removeproduct(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    if (message.from_user.id in db.bannedUsers): return
     log(message,logger)
     sender_id = message.from_user.id
     if (not isAuthorizedUser(sender_id)):
@@ -696,6 +701,7 @@ def removeproduct_step_2(message:telebot.types.Message,args:Tuple[int,str]) -> N
 @bot.message_handler(commands=['listall'])
 def listall(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    if (message.from_user.id in db.bannedUsers): return
     log(message,logger)
     sender_id = message.from_user.id
     if (not isAuthorizedUser(sender_id)):
@@ -728,6 +734,7 @@ def listall(message:telebot.types.Message) -> None:
 @bot.message_handler(commands=['update'])
 def update(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    if (message.from_user.id in db.bannedUsers): return
     log(message,logger)
     sender_id = message.from_user.id
     if (not isAuthorizedUser(sender_id)):
@@ -735,7 +742,7 @@ def update(message:telebot.types.Message) -> None:
         return
     tmp_msg = bot.send_message(
         chat_id=sender_id,
-        text="Scraping Amazon's website... (it could take a while)"
+        text="Scraping Amazon's website... (could take a while)"
     )
     try:
         msg = db.updateWatchlists(sender_id)
@@ -763,6 +770,7 @@ def update(message:telebot.types.Message) -> None:
 @bot.message_handler(commands=['auth'])
 def auth(message:telebot.types.Message) -> None:
     if (message.from_user.is_bot): return
+    if (message.from_user.id in db.bannedUsers): return
     log(message,logger)
     sender_id = message.from_user.id
     if (sender_id == db.adminId):
