@@ -59,7 +59,7 @@ logger = logger_init()
 
 def addPendingRequest(user_id:int) -> int:
     userExists = False
-    with open(db.txtPath,"r+",encoding='utf-8') as pending_txt:
+    with open(db.pendingPath,"r+",encoding='utf-8') as pending_txt:
         pending = [int(line.strip()) for line in pending_txt.readlines()]
         if (user_id in pending): userExists = True
         else: pending_txt.write(str(user_id)+'\n')
@@ -69,12 +69,12 @@ def addPendingRequest(user_id:int) -> int:
 def removePendingRequest(user_id:int) -> int:
     userExists = True
     pending = []
-    with open(db.txtPath,"r",encoding='utf-8') as pending_txt:
+    with open(db.pendingPath,"r",encoding='utf-8') as pending_txt:
         pending = [int(line.strip()) for line in pending_txt.readlines()]
         if (user_id not in pending): userExists = False
         else: pending.remove(user_id)
     if(not userExists): return -1
-    with open(db.txtPath,"w",encoding='utf-8') as pending_txt:
+    with open(db.pendingPath,"w",encoding='utf-8') as pending_txt:
         for pending_id in pending: pending_txt.write(str(pending_id)+'\n')
     return 0
 
@@ -99,7 +99,7 @@ def adminAuthResponse_yes(query:telebot.types.CallbackQuery) -> None:
     if (query.from_user.id != db.adminId): return
     res,user_id,user_firstName = query.data.split(':')
     user_id = int(user_id)
-    if (res == "yes"):
+    if (res == "y"):
         if (db.addUser(user_id,user_firstName) == -1):
             sent = bot.send_message(chat_id=db.adminId,text="User already in the database! Unexpected anomaly :(")
             log(sent,logger)
@@ -118,7 +118,7 @@ def adminAuthResponse_no(query:telebot.types.CallbackQuery) -> None:
     if (query.from_user.id != db.adminId): return
     res,user_id,user_firstName = query.data.split(':')
     user_id = int(user_id)
-    if (res == "no"):
+    if (res == "n"):
         sent = bot.send_message(chat_id=user_id,text="You have not been authorized to use this bot :(")
         log(sent,logger)
         removePendingRequest(user_id)
