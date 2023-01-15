@@ -303,7 +303,7 @@ class AWSDatabase:
 
     jsonPath:str
     csvPath:str
-    txtPath:str
+    pendingPath:str
     banPath:str
     adminId:int
     authorizedUsers:List[int]
@@ -313,11 +313,11 @@ class AWSDatabase:
     def __init__(self, adminId:int, resourcesPath:str) -> None:
         self.jsonPath = join(resourcesPath,"database.json")
         self.csvPath = join(resourcesPath,"authorized_users.csv")
-        self.txtPath = join(resourcesPath,"pending_users.txt")
+        self.pendingPath = join(resourcesPath,"pending_users.txt")
         self.banPath = join(resourcesPath,"banned_users.txt")
         if (not isfile(self.jsonPath)): self.createJsonFile()
         if (not isfile(self.csvPath)): self.createCsvFile()
-        if (not isfile(self.txtPath)): self.createTxtFile()
+        if (not isfile(self.pendingPath)): self.createPendingFile()
         if (not isfile(self.banPath)): self.createBanFile()
         self.adminId = adminId
         self.authorizedUsers = []
@@ -335,8 +335,8 @@ class AWSDatabase:
     def createCsvFile(self) -> None:
         with open(self.csvPath,'x',encoding='utf-8') as new_csv:
             new_csv.write("user_id,user_firstName,role\n")
-    def createTxtFile(self) -> None:
-        with open(self.txtPath,'x',encoding='utf-8') as new_txt:
+    def createPendingFile(self) -> None:
+        with open(self.pendingPath,'x',encoding='utf-8') as new_txt:
             new_txt.write("")
     def createBanFile(self) -> None:
         with open(self.banPath,'x',encoding='utf-8') as ban_file:
