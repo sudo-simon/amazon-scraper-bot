@@ -1,4 +1,4 @@
-# Jaf's AWS - Amazon Web Scraper Telegram bot
+# AWS - Amazon Web Scraper Telegram bot
 
 Python web scraper for Amazon offers with Telegram bot integration
 
